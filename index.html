@@ -1099,9 +1099,17 @@
     }
     if(p.notes) card.appendChild(row('Keterangan', p.notes));
 
-    const editBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin-top:14px;font-size:12.5px;'}, ['✎ Edit Data Ini']);
+    const btnRow = el('div', {style:'display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;'});
+    const editBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin:0;font-size:12.5px;'}, ['✎ Edit Data Ini']);
     editBtn.addEventListener('click', ()=>{ state.editId = id; state.tab='tambah'; render(); });
-    card.appendChild(editBtn);
+    btnRow.appendChild(editBtn);
+
+    const pdfDiriBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin:0;font-size:12.5px;'}, ['🖨 PDF Data Diri']);
+    pdfDiriBtn.addEventListener('click', ()=>{
+      openPrintDoc(`Data Diri — ${displayName(p)}`, buildDataDiriHtml(id));
+    });
+    btnRow.appendChild(pdfDiriBtn);
+    card.appendChild(btnRow);
 
     return card;
   }
@@ -1441,6 +1449,22 @@
       return li;
     }
     return `<h2>Silsilah Keturunan</h2><ul>${walk(rootId)}</ul>`;
+  }
+
+  function buildDataDiriHtml(id){
+    const p = people[id];
+    let html = '';
+    if(p.photo) html += `<div style="text-align:center;margin-bottom:18px;"><img src="${p.photo}" style="width:130px;height:130px;border-radius:50%;object-fit:cover;border:3px solid #c9974f;"/></div>`;
+    html += `<h2>Data Pribadi</h2><ul><li>${personLineHtml(p)}</li></ul>`;
+    if(p.contact) html += `<p style="font-size:13px;margin:10px 0 0 0;"><strong>No. Kontak:</strong> ${escapeXml(p.contact)}</p>`;
+    const refs = [];
+    if(p.fatherId) refs.push('Ayah: ' + displayName(people[p.fatherId]));
+    if(p.motherId) refs.push('Ibu: ' + displayName(people[p.motherId]));
+    if(p.spouseIds.length) refs.push('Pasangan: ' + p.spouseIds.map(sid=>displayName(people[sid])).join(', '));
+    if(p.childrenIds.length) refs.push('Anak: ' + p.childrenIds.map(cid=>displayName(people[cid])).join(', '));
+    if(refs.length) html += `<h2>Keluarga Terkait</h2><ul>${refs.map(r=>`<li>${escapeXml(r)}</li>`).join('')}</ul>`;
+    if(p.notes) html += `<h2>Keterangan</h2><p style="font-size:13px;">${escapeXml(p.notes)}</p>`;
+    return html;
   }
 
   function openPrintDoc(title, bodyHtml){
