@@ -549,7 +549,7 @@
   }
 
   let state = { tab: 'tambah', focusId: null, relA: null, relB: null, lastNotice: null, editId: null, netSelA: null, netSelB: null,
-    treeView: {scale:1,x:0,y:0}, netView: {scale:1,x:0,y:0} };
+    treeView: {scale:1,x:0,y:0}, netView: {scale:1,x:0,y:0}, daftarSearch: '' };
 
   function personOptions(filterGender){
     return Object.values(people)
@@ -920,8 +920,24 @@
       wrap.appendChild(el('div',{class:'sk-empty'},['Belum ada orang yang dicatat.']));
       return wrap;
     }
+    const searchInput = el('input', {type:'text', placeholder:'🔍 Cari nama atau alias...', value: state.daftarSearch,
+      style:'width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:14px;font-family:inherit;margin-bottom:14px;'});
+    searchInput.addEventListener('input', (e)=>{ state.daftarSearch = e.target.value; render(); });
+    wrap.appendChild(searchInput);
+
+    const q = normalizeName(state.daftarSearch);
+    const allPeople = Object.values(people).sort((a,b)=>displayName(a).localeCompare(displayName(b)));
+    const filtered = q ? allPeople.filter(p => normalizeName(p.name).includes(q) || normalizeName(p.alias).includes(q)) : allPeople;
+
+    if(q){
+      wrap.appendChild(el('div', {style:'font-size:12px;color:var(--ink-soft);margin-bottom:10px;'}, [`${filtered.length} dari ${allPeople.length} orang cocok dengan "${state.daftarSearch}"`]));
+      if(filtered.length > 1){
+        wrap.appendChild(el('div', {style:'font-size:12px;color:var(--danger);margin-bottom:10px;'}, ['⚠ Ada lebih dari satu orang dengan nama mirip — periksa apakah ini data ganda yang tidak sengaja terbuat terpisah.']));
+      }
+    }
+
     const list = el('div', {});
-    Object.values(people).sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+    filtered.forEach(p=>{
       const bd = formatBirth(p);
       const dd = formatDeath(p);
       const label = displayName(p);
@@ -1024,7 +1040,70 @@
 
     if(!state.focusId) return wrap;
     wrap.appendChild(buildTreeSVG(state.focusId));
+    wrap.appendChild(buildDetailCard(state.focusId));
     return wrap;
+  }
+
+  function buildDetailCard(id){
+    const p = people[id];
+    const card = el('div', {style:'margin-top:18px;border:1px solid var(--line);border-radius:10px;background:#fffdf8;padding:18px 20px;'});
+    card.appendChild(el('div', {style:'font-family:Georgia,serif;font-size:16px;color:var(--indigo);margin-bottom:14px;'}, ['📋 Data Lengkap']));
+
+    const header = el('div', {style:'display:flex;gap:14px;align-items:center;margin-bottom:16px;'});
+    header.appendChild(avatarEl(p, 64));
+    const headText = el('div', {}, [
+      el('div', {style:'font-size:17px;font-weight:700;color:var(--ink);'}, [displayName(p) + (p.isDeceased ? ' ☪' : '')]),
+    ]);
+    if(p.name && p.alias) headText.appendChild(el('div', {style:'font-size:13px;color:var(--brass);'}, [`alias ${p.alias}`]));
+    const bd = formatBirth(p), dd = formatDeath(p);
+    const statusLine = [
+      p.gender==='L' ? 'Laki-laki' : 'Perempuan',
+      bd ? `lahir ${bd}` : null,
+      p.isDeceased ? `wafat ${dd || '(tanggal tidak diketahui)'}` : 'masih hidup'
+    ].filter(Boolean).join(' · ');
+    headText.appendChild(el('div', {style:'font-size:13px;color:var(--ink-soft);margin-top:2px;'}, [statusLine]));
+    header.appendChild(headText);
+    card.appendChild(header);
+
+    function row(label, valueNode){
+      const r = el('div', {style:'display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13.5px;'});
+      r.appendChild(el('div', {style:'width:110px;flex-shrink:0;color:var(--ink-soft);'}, [label]));
+      r.appendChild(el('div', {style:'flex:1;'}, [valueNode]));
+      return r;
+    }
+    function linkTo(targetId, text){
+      const a = el('span', {style:'color:var(--indigo);text-decoration:underline;cursor:pointer;'}, [text]);
+      a.addEventListener('click', ()=>{ state.focusId = targetId; render(); });
+      return a;
+    }
+
+    if(p.address) card.appendChild(row('Alamat', p.address));
+    if(p.job) card.appendChild(row('Pekerjaan', p.job));
+    if(p.contact) card.appendChild(row('No. Kontak', p.contact));
+
+    if(p.fatherId || p.motherId){
+      const box = el('div', {});
+      if(p.fatherId) box.appendChild(el('div', {}, [linkTo(p.fatherId, displayName(people[p.fatherId])), ' (Ayah)']));
+      if(p.motherId) box.appendChild(el('div', {}, [linkTo(p.motherId, displayName(people[p.motherId])), ' (Ibu)']));
+      card.appendChild(row('Orang Tua', box));
+    }
+    if(p.spouseIds.length){
+      const box = el('div', {});
+      p.spouseIds.forEach(sid => box.appendChild(el('div', {}, [linkTo(sid, displayName(people[sid]))])));
+      card.appendChild(row('Pasangan', box));
+    }
+    if(p.childrenIds.length){
+      const box = el('div', {});
+      p.childrenIds.forEach(cid => box.appendChild(el('div', {}, [linkTo(cid, displayName(people[cid]))])));
+      card.appendChild(row(`Anak (${p.childrenIds.length})`, box));
+    }
+    if(p.notes) card.appendChild(row('Keterangan', p.notes));
+
+    const editBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin-top:14px;font-size:12.5px;'}, ['✎ Edit Data Ini']);
+    editBtn.addEventListener('click', ()=>{ state.editId = id; state.tab='tambah'; render(); });
+    card.appendChild(editBtn);
+
+    return card;
   }
 
   function buildZoomShell(svgHtml, viewState, heightPx){
