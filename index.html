@@ -979,7 +979,7 @@
 
     const opts = Object.values(people).sort((a,b)=>displayName(a).localeCompare(displayName(b)));
     if(!state.focusId && opts.length) state.focusId = opts[0].id;
-    const focusRow = el('div', {style:'display:flex;gap:10px;align-items:center;margin-bottom:18px;'});
+    const focusRow = el('div', {style:'display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;'});
     const focusSel = el('select', {class:'sk-focus-select', style:'width:280px;padding:9px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-family:inherit;margin-bottom:0;'},
       opts.map(p=>el('option',{value:p.id},[displayName(p)])));
     focusSel.value = state.focusId;
@@ -989,8 +989,23 @@
       const editBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;'}, ['✎ Lengkapi / Edit Data']);
       editBtn.addEventListener('click', ()=>{ state.editId = state.focusId; state.tab='tambah'; render(); });
       focusRow.appendChild(editBtn);
+
+      const pdfKecilBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;'}, ['🖨 PDF Keluarga Kecil']);
+      pdfKecilBtn.addEventListener('click', ()=>{
+        const p = people[state.focusId];
+        openPrintDoc(`Keluarga Kecil — ${displayName(p)}`, buildKeluargaKecilHtml(state.focusId));
+      });
+      focusRow.appendChild(pdfKecilBtn);
+
+      const pdfBesarBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;'}, ['🖨 PDF Keluarga Besar']);
+      pdfBesarBtn.addEventListener('click', ()=>{
+        const p = people[state.focusId];
+        openPrintDoc(`Keluarga Besar — ${displayName(p)} dan Keturunannya`, buildKeluargaBesarHtml(state.focusId));
+      });
+      focusRow.appendChild(pdfBesarBtn);
     }
     wrap.appendChild(focusRow);
+    wrap.appendChild(el('div', {style:'font-size:11.5px;color:var(--ink-soft);margin-top:-10px;margin-bottom:16px;'}, ['"Keluarga Kecil" = diri sendiri, orang tua, pasangan, anak. "Keluarga Besar" = orang yang dipilih di atas beserta SEMUA keturunannya (anak, cucu, cicit, dst). Pilih dulu orang yang jadi "kakek/leluhur" di kotak atas sebelum klik PDF Keluarga Besar.']));
 
     if(!state.focusId) return wrap;
     wrap.appendChild(buildTreeSVG(state.focusId));
@@ -1272,6 +1287,83 @@
   }
 
   function truncate(s,n){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+  // ---------- Cetak / Simpan sebagai PDF ----------
+  function personLineHtml(p){
+    if(!p) return '(tidak diketahui)';
+    const bd = formatBirth(p), dd = formatDeath(p);
+    let line = `<strong>${escapeXml(displayName(p))}</strong>`;
+    if(p.name && p.alias) line += ` (alias ${escapeXml(p.alias)})`;
+    line += p.gender==='L' ? ' — Laki-laki' : ' — Perempuan';
+    if(bd) line += `, lahir ${escapeXml(bd)}`;
+    if(p.isDeceased) line += `, wafat ${dd?escapeXml(dd):'(tanggal tidak diketahui)'}`;
+    if(p.job) line += ` · ${escapeXml(p.job)}`;
+    if(p.address) line += ` · ${escapeXml(p.address)}`;
+    return line;
+  }
+
+  function buildKeluargaKecilHtml(rootId){
+    const p = people[rootId];
+    let html = `<h2>Diri Sendiri</h2><ul><li>${personLineHtml(p)}</li></ul>`;
+    if(p.fatherId || p.motherId){
+      html += `<h2>Orang Tua</h2><ul>`;
+      if(p.fatherId) html += `<li>${personLineHtml(people[p.fatherId])} (Ayah)</li>`;
+      if(p.motherId) html += `<li>${personLineHtml(people[p.motherId])} (Ibu)</li>`;
+      html += `</ul>`;
+    }
+    if(p.spouseIds.length){
+      html += `<h2>Pasangan</h2><ul>`;
+      p.spouseIds.forEach(sid=> html += `<li>${personLineHtml(people[sid])}</li>`);
+      html += `</ul>`;
+    }
+    if(p.childrenIds.length){
+      html += `<h2>Anak-Anak (${p.childrenIds.length})</h2><ul>`;
+      p.childrenIds.forEach(cid=> html += `<li>${personLineHtml(people[cid])}</li>`);
+      html += `</ul>`;
+    }
+    if(p.notes) html += `<h2>Keterangan</h2><p style="font-size:13px;">${escapeXml(p.notes)}</p>`;
+    return html;
+  }
+
+  function buildKeluargaBesarHtml(rootId){
+    const visited = new Set();
+    function walk(id){
+      if(visited.has(id)) return '';
+      visited.add(id);
+      const p = people[id];
+      if(!p) return '';
+      let li = `<li>${personLineHtml(p)}`;
+      if(p.spouseIds.length) li += ` <span class="spouse">— menikah dengan ${p.spouseIds.map(sid=>escapeXml(displayName(people[sid]))).join(', ')}</span>`;
+      if(p.childrenIds.length){
+        li += '<ul>' + p.childrenIds.map(walk).join('') + '</ul>';
+      }
+      li += '</li>';
+      return li;
+    }
+    return `<h2>Silsilah Keturunan</h2><ul>${walk(rootId)}</ul>`;
+  }
+
+  function openPrintDoc(title, bodyHtml){
+    const win = window.open('', '_blank');
+    if(!win){ alert('Popup diblokir browser. Izinkan popup untuk situs ini di pengaturan browser, lalu coba lagi.'); return; }
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeXml(title)}</title>
+    <style>
+      body{font-family:Georgia,'Times New Roman',serif;color:#2c2117;padding:30px;max-width:800px;margin:0 auto;}
+      h1{font-size:20px;color:#253a52;border-bottom:2px solid #c9974f;padding-bottom:8px;}
+      h2{font-size:15px;color:#253a52;margin-top:22px;margin-bottom:8px;}
+      ul{padding-left:22px;margin:0;} li{margin-bottom:7px;line-height:1.5;font-size:13px;}
+      .meta{font-size:11px;color:#777;margin-bottom:22px;}
+      .spouse{color:#8c3a2b;font-style:italic;}
+      @media print{ body{padding:8mm;} }
+    </style></head><body>
+    <h1>${escapeXml(title)}</h1>
+    <div class="meta">Dicetak dari Silsilah Keluarga — ${new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}</div>
+    ${bodyHtml}
+    </body></html>`);
+    win.document.close();
+    setTimeout(()=>{ win.focus(); win.print(); }, 400);
+  }
+
   function escapeXml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ---------- init ----------
