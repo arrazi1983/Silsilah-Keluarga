@@ -1137,23 +1137,34 @@
     }
     applyTransform();
 
-    let dragging=false, startX=0, startY=0, origX=0, origY=0, moved=false;
+    let dragging=false, startX=0, startY=0, origX=0, origY=0, moved=false, suppressNextClick=false;
     viewport.addEventListener('pointerdown', e=>{
+      if(e.button !== undefined && e.button !== 0) return;
       dragging=true; moved=false; startX=e.clientX; startY=e.clientY; origX=viewState.x; origY=viewState.y;
       viewport.style.cursor='grabbing';
-      try{ viewport.setPointerCapture(e.pointerId); }catch(err){}
+
+      const onMove = (e2)=>{
+        if(!dragging) return;
+        const dx = e2.clientX-startX, dy = e2.clientY-startY;
+        if(Math.abs(dx)>4 || Math.abs(dy)>4) moved = true;
+        viewState.x = origX + dx; viewState.y = origY + dy;
+        applyTransform();
+      };
+      const onUp = ()=>{
+        dragging=false; viewport.style.cursor='grab';
+        if(moved) suppressNextClick = true;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
     });
-    viewport.addEventListener('pointermove', e=>{
-      if(!dragging) return;
-      const dx = e.clientX-startX, dy = e.clientY-startY;
-      if(Math.abs(dx)>3 || Math.abs(dy)>3) moved = true;
-      viewState.x = origX + dx; viewState.y = origY + dy;
-      applyTransform();
-    });
-    const stopDrag = ()=>{ dragging=false; viewport.style.cursor='grab'; };
-    viewport.addEventListener('pointerup', stopDrag);
-    viewport.addEventListener('pointerleave', stopDrag);
-    viewport.addEventListener('pointercancel', stopDrag);
+    // Kalau baru saja terjadi drag (geser), abaikan satu klik berikutnya supaya tidak salah pindah fokus.
+    viewport.addEventListener('click', e=>{
+      if(suppressNextClick){ e.stopPropagation(); e.preventDefault(); suppressNextClick=false; }
+    }, true);
     viewport.addEventListener('wheel', e=>{
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.12 : -0.12;
