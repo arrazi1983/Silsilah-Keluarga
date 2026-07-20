@@ -998,6 +998,24 @@
         });
         resWrap.appendChild(chain);
       }
+      const openBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin-top:14px;font-size:12.5px;'}, ['📄 Buka & Unduh Hasil Ini']);
+      openBtn.addEventListener('click', ()=>{
+        let html = `<h2>Hubungan Kekerabatan</h2><p style="font-size:14px;">${escapeXml(result.text)}</p>`;
+        if(result.path){
+          html += `<h2>Jalur Penghubung</h2><ul>`;
+          result.path.forEach((pid, i)=>{
+            let line = escapeXml(displayName(people[pid]));
+            if(i < result.path.length-1){
+              const label = relLabelForEdge(pid, result.path[i+1]);
+              line += label ? ` — (${escapeXml(label)})` : '';
+            }
+            html += `<li>${line}</li>`;
+          });
+          html += `</ul>`;
+        }
+        openPrintDoc(`Hubungan — ${displayName(people[idA])} & ${displayName(people[idB])}`, html);
+      });
+      resWrap.appendChild(openBtn);
       wrap.appendChild(resWrap);
     }
     return wrap;
@@ -1048,6 +1066,13 @@
     if(!state.focusId) return wrap;
     wrap.appendChild(buildDetailCard(state.focusId));
     wrap.appendChild(el('div', {style:'font-family:Georgia,serif;font-size:15px;color:var(--indigo);margin:20px 0 10px;'}, ['🌳 Peta Pohon']));
+    const descIds = collectDescendantIds(state.focusId);
+    const stats = genderStats(descIds);
+    wrap.appendChild(el('div', {style:'display:flex;gap:16px;background:#f2ead9;border:1px solid var(--line);border-radius:8px;padding:9px 16px;margin-bottom:14px;font-size:13px;'}, [
+      el('span', {}, [`👨 ${stats.L} Laki-laki`]),
+      el('span', {}, [`👩 ${stats.P} Perempuan`]),
+      el('span', {}, [`Σ ${stats.total} Total keturunan dari sini`])
+    ]));
     wrap.appendChild(buildTreeSVG(state.focusId));
     return wrap;
   }
@@ -1429,9 +1454,39 @@
     return line;
   }
 
+  function genderStats(ids){
+    let L=0, P=0;
+    ids.forEach(id=>{ const p = people[id]; if(!p) return; if(p.gender==='L') L++; else P++; });
+    return { L, P, total: ids.length };
+  }
+  function statsHtml(stats){
+    return `<div style="display:flex;gap:18px;background:#f2ead9;border:1px solid #cbb98c;border-radius:8px;padding:10px 16px;margin-bottom:18px;font-size:13px;">
+      <div>👨 <strong>${stats.L}</strong> Laki-laki</div>
+      <div>👩 <strong>${stats.P}</strong> Perempuan</div>
+      <div>Σ <strong>${stats.total}</strong> Total</div>
+    </div>`;
+  }
+
+  function collectDescendantIds(rootId){
+    const visited = new Set();
+    function walk(id){
+      if(visited.has(id) || !people[id]) return;
+      visited.add(id);
+      people[id].childrenIds.forEach(walk);
+    }
+    walk(rootId);
+    return Array.from(visited);
+  }
+
   function buildKeluargaKecilHtml(rootId){
     const p = people[rootId];
-    let html = `<h2>Diri Sendiri</h2><ul><li>${personLineHtml(p)}</li></ul>`;
+    const ids = new Set([rootId]);
+    if(p.fatherId) ids.add(p.fatherId);
+    if(p.motherId) ids.add(p.motherId);
+    p.spouseIds.forEach(sid=>ids.add(sid));
+    p.childrenIds.forEach(cid=>ids.add(cid));
+    let html = statsHtml(genderStats(Array.from(ids)));
+    html += `<h2>Diri Sendiri</h2><ul><li>${personLineHtml(p)}</li></ul>`;
     if(p.fatherId || p.motherId){
       html += `<h2>Orang Tua</h2><ul>`;
       if(p.fatherId) html += `<li>${personLineHtml(people[p.fatherId])} (Ayah)</li>`;
@@ -1453,6 +1508,8 @@
   }
 
   function buildKeluargaBesarHtml(rootId){
+    const descIds = collectDescendantIds(rootId);
+    let html = statsHtml(genderStats(descIds));
     const visited = new Set();
     function walk(id){
       if(visited.has(id)) return '';
@@ -1467,7 +1524,8 @@
       li += '</li>';
       return li;
     }
-    return `<h2>Silsilah Keturunan</h2><ul>${walk(rootId)}</ul>`;
+    html += `<h2>Silsilah Keturunan</h2><ul>${walk(rootId)}</ul>`;
+    return html;
   }
 
   function buildDataDiriHtml(id){
@@ -1489,22 +1547,55 @@
   function openPrintDoc(title, bodyHtml){
     const win = window.open('', '_blank');
     if(!win){ alert('Popup diblokir browser. Izinkan popup untuk situs ini di pengaturan browser, lalu coba lagi.'); return; }
+    const safeFileName = title.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g,'').slice(0,60) || 'silsilah';
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeXml(title)}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
     <style>
       body{font-family:Georgia,'Times New Roman',serif;color:#2c2117;padding:30px;max-width:800px;margin:0 auto;}
       h1{font-size:20px;color:#253a52;border-bottom:2px solid #c9974f;padding-bottom:8px;}
       h2{font-size:15px;color:#253a52;margin-top:22px;margin-bottom:8px;}
       ul{padding-left:22px;margin:0;} li{margin-bottom:7px;line-height:1.5;font-size:13px;}
-      .meta{font-size:11px;color:#777;margin-bottom:22px;}
+      .meta{font-size:11px;color:#777;margin-bottom:10px;}
       .spouse{color:#8c3a2b;font-style:italic;}
-      @media print{ body{padding:8mm;} }
+      #sk-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:18px;font-family:'Source Sans 3',sans-serif;}
+      #sk-download-btn{background:#253a52;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+      #sk-download-btn:disabled{opacity:0.6;cursor:wait;}
+      #sk-fallback{font-size:12px;color:#777;}
+      #sk-doc-content{}
     </style></head><body>
-    <h1>${escapeXml(title)}</h1>
-    <div class="meta">Dicetak dari Silsilah Keluarga — ${new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}</div>
-    ${bodyHtml}
+    <div id="sk-toolbar">
+      <button id="sk-download-btn" onclick="skDownloadPdf()">⬇ Unduh sebagai PDF</button>
+      <span id="sk-fallback">Kalau unduh gagal, gunakan <a href="#" onclick="window.print();return false;">Cetak (Ctrl/Cmd+P)</a> sebagai cadangan.</span>
+    </div>
+    <div id="sk-doc-content">
+      <h1>${escapeXml(title)}</h1>
+      <div class="meta">Dari Silsilah Keluarga — ${new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}</div>
+      ${bodyHtml}
+    </div>
+    <script>
+      function skDownloadPdf(){
+        const btn = document.getElementById('sk-download-btn');
+        const toolbar = document.getElementById('sk-toolbar');
+        btn.disabled = true; btn.textContent = 'Menyiapkan PDF...';
+        toolbar.style.display = 'none';
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p','pt','a4');
+        doc.html(document.getElementById('sk-doc-content'), {
+          margin: 24,
+          autoPaging: 'text',
+          width: 545,
+          windowWidth: 800,
+          callback: function(doc){
+            doc.save('${safeFileName}.pdf');
+            toolbar.style.display = 'flex';
+            btn.disabled = false; btn.textContent = '⬇ Unduh sebagai PDF';
+          }
+        });
+      }
+    <\/script>
     </body></html>`);
     win.document.close();
-    setTimeout(()=>{ win.focus(); win.print(); }, 400);
   }
 
   function escapeXml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
