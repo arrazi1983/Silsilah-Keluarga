@@ -305,7 +305,7 @@
   }
 
   // Cari orang berdasarkan nama (persis/mirip). Kalau belum ada, buat baru otomatis.
-  function resolveOrCreatePerson(rawInput, guessGender){
+  function resolveOrCreatePerson(rawInput, guessGender, currentLinkedId){
     if(!rawInput) return null;
     let name = rawInput.trim();
     let gender = guessGender;
@@ -313,8 +313,23 @@
     if(genderTag){ gender = genderTag[1].toUpperCase(); name = name.replace(/\(([LP])\)\s*$/i,'').trim(); }
     if(!name) return null;
     const nn = normalizeName(name);
-    const existing = Object.values(people).find(p => nameMatches(p, nn));
-    if(existing) return { id: existing.id, isNew: false };
+    const matches = Object.values(people).filter(p => nameMatches(p, nn));
+    if(matches.length){
+      // Kalau nama yang diketik masih sama dengan sambungan yang sudah ada sebelumnya, tidak perlu tanya lagi.
+      if(currentLinkedId && matches.some(m => m.id === currentLinkedId)){
+        return { id: currentLinkedId, isNew: false };
+      }
+      const existing = matches[0];
+      const bd = formatBirth(existing);
+      const parentInfo = [];
+      if(existing.fatherId) parentInfo.push('ayah: '+displayName(people[existing.fatherId]));
+      if(existing.motherId) parentInfo.push('ibu: '+displayName(people[existing.motherId]));
+      const detail = [bd?('lahir '+bd):null, parentInfo.length?parentInfo.join(', '):null].filter(Boolean).join(' · ');
+      const extra = matches.length > 1 ? `\n\n(Ada ${matches.length} orang dengan nama sama di data — ini yang pertama ditemukan.)` : '';
+      const msg = `Sudah ada "${displayName(existing)}"${detail?' ('+detail+')':''} di data.${extra}\n\nApakah ini ORANG YANG SAMA dengan yang Anda maksud?\n\nOK = Ya, sambungkan ke data yang sudah ada\nBatal = Bukan, ini orang lain — buat data baru terpisah`;
+      const isSame = window.confirm(msg);
+      if(isSame) return { id: existing.id, isNew: false };
+    }
     const id = newPerson({name, gender: gender || 'L'});
     return { id, isNew: true };
   }
@@ -432,13 +447,13 @@
   function computeNetworkLayout(ids, edgePairs){
     const sig = ids.slice().sort().join(',') + '|' + edgePairs.map(e=>e.join('-')).sort().join(',');
     if(sig === networkSignature) return networkPositions;
-    const W = Math.max(760, ids.length * 26), H = Math.max(560, ids.length * 22);
+    const W = Math.max(900, ids.length * 46), H = Math.max(680, ids.length * 40);
     const pos = {};
     ids.forEach((id,i)=>{
       const angle = (i/ids.length) * 2 * Math.PI;
       pos[id] = { x: W/2 + Math.cos(angle)*Math.min(W,H)*0.32, y: H/2 + Math.sin(angle)*Math.min(W,H)*0.32 };
     });
-    const k = Math.sqrt((W*H)/Math.max(1,ids.length)) * 0.85;
+    const k = Math.sqrt((W*H)/Math.max(1,ids.length)) * 1.25;
     for(let iter=0; iter<140; iter++){
       const disp = {}; ids.forEach(id=> disp[id]={x:0,y:0});
       for(let i=0;i<ids.length;i++){
@@ -807,8 +822,8 @@
       const spouseInput = document.getElementById('sk-spouse').value.trim();
       const childrenInput = document.getElementById('sk-children').value.trim();
 
-      const father = resolveOrCreatePerson(fatherInput, 'L');
-      const mother = resolveOrCreatePerson(motherInput, 'P');
+      const father = resolveOrCreatePerson(fatherInput, 'L', existing ? existing.fatherId : null);
+      const mother = resolveOrCreatePerson(motherInput, 'P', existing ? existing.motherId : null);
 
       let id, matches = [];
       const basics = {name, alias, gender: genderState.value, photo: photoState.value, birthDay, birthMonth, birthYear, address, contact, job, isDeceased, deathDay, deathMonth, deathYear, notes};
@@ -831,7 +846,7 @@
         id = addPerson({...basics, fatherId: father ? father.id : null, motherId: mother ? mother.id : null});
       }
 
-      const spouse = resolveOrCreatePerson(spouseInput, genderState.value === 'L' ? 'P' : 'L');
+      const spouse = resolveOrCreatePerson(spouseInput, genderState.value === 'L' ? 'P' : 'L', existing && existing.spouseIds.length ? existing.spouseIds[0] : null);
       if(spouse) linkSpouses(id, spouse.id);
 
       const createdChildren = [];
@@ -1206,7 +1221,7 @@
     ids.forEach(id=>{ clanOf[id] = getClanColor(id); });
 
     const pos = computeNetworkLayout(ids, edges);
-    const W = Math.max(760, ids.length*26), H = Math.max(560, ids.length*22);
+    const W = Math.max(900, ids.length*46), H = Math.max(680, ids.length*40);
 
     let highlightEdges = new Set();
     let relResult = null;
@@ -1252,10 +1267,16 @@
       const photoOrFill = p.photo
         ? `<clipPath id="netclip-${id}"><circle cx="${pp.x}" cy="${pp.y}" r="${r-3}"/></clipPath><circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="${color}"/><image href="${p.photo}" x="${pp.x-r+3}" y="${pp.y-r+3}" width="${(r-3)*2}" height="${(r-3)*2}" clip-path="url(#netclip-${id})" preserveAspectRatio="xMidYMid slice"/><circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`
         : `<circle class="sk-net-dot" cx="${pp.x}" cy="${pp.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2.5"/>`;
+      const isSelected = state.netSelA===id || state.netSelB===id;
+      const labelText = (p.isDeceased?'☪ ':'') + (isSelected ? displayName(p) : truncate(displayName(p),14));
+      const labelW = Math.max(30, labelText.length * 6.6);
+      const labelY = pp.y + r + 13;
       svgContent += `
         <g class="sk-net-node" data-id="${id}">
+          <title>${escapeXml(displayName(p))}${p.job?(' · '+escapeXml(p.job)):''}</title>
           ${photoOrFill}
-          <text x="${pp.x}" y="${pp.y + r + 13}" text-anchor="middle" font-size="11" font-weight="600" fill="#2c2117">${p.isDeceased?'☪ ':''}${escapeXml(truncate(displayName(p),16))}</text>
+          <rect x="${pp.x - labelW/2 - 4}" y="${labelY-11}" width="${labelW+8}" height="16" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
+          <text x="${pp.x}" y="${labelY}" text-anchor="middle" font-size="${isSelected?12:11}" font-weight="${isSelected?700:600}" fill="#2c2117">${escapeXml(labelText)}</text>
         </g>`;
     });
 
