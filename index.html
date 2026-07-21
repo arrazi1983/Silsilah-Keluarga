@@ -449,13 +449,13 @@
   function layoutCluster(nodeIds, edgePairs){
     const n = nodeIds.length;
     if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
-    const lw = Math.max(150, n*62), lh = Math.max(130, n*54);
+    const lw = Math.max(90, n*38), lh = Math.max(80, n*32);
     const pos = {};
     nodeIds.forEach((id,i)=>{
       const angle = (i/n) * 2 * Math.PI;
       pos[id] = { x: lw/2 + Math.cos(angle)*Math.min(lw,lh)*0.35, y: lh/2 + Math.sin(angle)*Math.min(lw,lh)*0.35 };
     });
-    const k = Math.sqrt((lw*lh)/n) * 0.95;
+    const k = Math.sqrt((lw*lh)/n) * 0.62;
     for(let iter=0; iter<130; iter++){
       const disp = {}; nodeIds.forEach(id=> disp[id]={x:0,y:0});
       for(let i=0;i<n;i++){
@@ -519,22 +519,26 @@
       return { comp, lpos, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 };
     });
 
-    const PAD = 60;
-    const cellW = Math.max(...clusterData.map(c=>c.w)) + PAD;
-    const cellH = Math.max(...clusterData.map(c=>c.h)) + PAD;
-    const cols = Math.max(1, Math.ceil(Math.sqrt(clusterData.length)));
+    const PAD = 30;
+    const totalNodes = ids.length;
+    const MAX_ROW_WIDTH = Math.max(700, Math.sqrt(totalNodes) * 130);
 
     const pos = {};
-    clusterData.forEach((c, idx)=>{
-      const row = Math.floor(idx/cols), col = idx % cols;
-      const cellOffsetX = col*cellW + PAD/2 + (cellW - PAD - c.w)/2;
-      const cellOffsetY = row*cellH + PAD/2 + (cellH - PAD - c.h)/2;
+    let cursorX = PAD, cursorY = PAD, rowHeight = 0;
+    clusterData.forEach(c=>{
+      if(cursorX > PAD && cursorX + c.w > MAX_ROW_WIDTH){
+        cursorX = PAD;
+        cursorY += rowHeight + PAD;
+        rowHeight = 0;
+      }
       c.comp.forEach(id=>{
         pos[id] = {
-          x: cellOffsetX + (c.lpos[id].x - c.minX),
-          y: cellOffsetY + (c.lpos[id].y - c.minY)
+          x: cursorX + (c.lpos[id].x - c.minX),
+          y: cursorY + (c.lpos[id].y - c.minY)
         };
       });
+      cursorX += c.w + PAD;
+      rowHeight = Math.max(rowHeight, c.h);
     });
 
     const allX = Object.values(pos).map(p=>p.x), allY = Object.values(pos).map(p=>p.y);
@@ -1475,17 +1479,26 @@
     const searchListId = 'sk-net-search-list';
     const searchDatalist = el('datalist', {id: searchListId});
     ids.forEach(id=> searchDatalist.appendChild(el('option', {value: displayName(people[id])})));
-    const searchInput = el('input', {type:'text', list: searchListId, placeholder:'🔍 Cari nama, lalu klik Cari...', style:'flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:13px;font-family:inherit;'});
+    const searchInput = el('input', {type:'text', list: searchListId, placeholder:'🔍 Ketik atau pilih nama — langsung berpindah', style:'flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:13px;font-family:inherit;'});
     const searchBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 16px;margin:0;'}, ['Cari →']);
+    function jumpTo(found){
+      state.netSelA = found;
+      state.netCenterTarget = found;
+      render();
+    }
     function doSearch(){
       const q = normalizeName(searchInput.value);
       if(!q) return;
       const found = ids.find(id => nameMatches(people[id], q));
       if(!found){ alert('Nama tidak ditemukan. Coba ketik ulang atau pilih dari saran yang muncul.'); return; }
-      state.netSelA = found;
-      state.netCenterTarget = found;
-      render();
+      jumpTo(found);
     }
+    searchInput.addEventListener('input', ()=>{
+      const q = normalizeName(searchInput.value);
+      if(!q) return;
+      const found = ids.find(id => nameMatches(people[id], q));
+      if(found) jumpTo(found); // otomatis berpindah begitu nama yang diketik persis cocok (misal dipilih dari saran)
+    });
     searchBtn.addEventListener('click', doSearch);
     searchInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doSearch(); } });
     searchWrap.appendChild(searchInput);
@@ -1514,15 +1527,27 @@
         ? `<clipPath id="netclip-${id}"><circle cx="${pp.x}" cy="${pp.y}" r="${r-3}"/></clipPath><circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="${color}"/><image href="${p.photo}" x="${pp.x-r+3}" y="${pp.y-r+3}" width="${(r-3)*2}" height="${(r-3)*2}" clip-path="url(#netclip-${id})" preserveAspectRatio="xMidYMid slice"/><circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`
         : `<circle class="sk-net-dot" cx="${pp.x}" cy="${pp.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2.5"/>`;
       const isSelected = state.netSelA===id || state.netSelB===id;
-      const labelText = (p.isDeceased?'☪ ':'') + (isSelected ? displayName(p) : truncate(displayName(p),14));
-      const labelW = Math.max(30, labelText.length * 6.6);
-      const labelY = pp.y + r + 13;
+      const prefix = p.isDeceased ? '☪ ' : '';
+      const words = displayName(p).split(' ');
+      let lines = [];
+      if(words.length <= 1){ lines = [prefix + (words[0]||'')]; }
+      else if(words.length === 2){ lines = [prefix + words[0], words[1]]; }
+      else {
+        const mid = Math.ceil(words.length/2);
+        lines = [prefix + words.slice(0,1).join(' '), words.slice(1, mid+1).join(' '), words.slice(mid+1).join(' ')].filter(Boolean);
+        if(lines.length > 3) lines = [lines[0], lines.slice(1).join(' ')];
+      }
+      lines = lines.slice(0,3);
+      const labelW = Math.max(34, Math.max(...lines.map(l=>l.length)) * 6.5);
+      const lineH = 13;
+      const labelTopY = pp.y + r + 13;
+      const tspans = lines.map((l,i)=>`<tspan x="${pp.x}" y="${labelTopY + i*lineH}">${escapeXml(l)}</tspan>`).join('');
       svgContent += `
         <g class="sk-net-node" data-id="${id}">
           <title>${escapeXml(displayName(p))}${p.job?(' · '+escapeXml(p.job)):''}</title>
           ${photoOrFill}
-          <rect x="${pp.x - labelW/2 - 4}" y="${labelY-11}" width="${labelW+8}" height="16" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
-          <text x="${pp.x}" y="${labelY}" text-anchor="middle" font-size="${isSelected?12:11}" font-weight="${isSelected?700:600}" fill="#2c2117">${escapeXml(labelText)}</text>
+          <rect x="${pp.x - labelW/2 - 4}" y="${labelTopY-11}" width="${labelW+8}" height="${lines.length*lineH+6}" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
+          <text text-anchor="middle" font-size="${isSelected?11.5:10.5}" font-weight="${isSelected?700:600}" fill="#2c2117">${tspans}</text>
         </g>`;
     });
 
