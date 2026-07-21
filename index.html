@@ -444,32 +444,32 @@
   // ---------- Simulasi tata-letak jaringan (force-directed sederhana) ----------
   let networkPositions = {};
   let networkSignature = '';
-  function computeNetworkLayout(ids, edgePairs, clanRootOf){
-    const sig = ids.slice().sort().join(',') + '|' + edgePairs.map(e=>e.join('-')).sort().join(',');
-    if(sig === networkSignature) return networkPositions;
-    const W = Math.max(950, ids.length * 44), H = Math.max(700, ids.length * 38);
+  let networkCanvasSize = { W: 1000, H: 700 };
+
+  function layoutCluster(nodeIds, edgePairs){
+    const n = nodeIds.length;
+    if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
+    const lw = Math.max(150, n*62), lh = Math.max(130, n*54);
     const pos = {};
-    ids.forEach((id,i)=>{
-      const angle = (i/ids.length) * 2 * Math.PI;
-      pos[id] = { x: W/2 + Math.cos(angle)*Math.min(W,H)*0.32, y: H/2 + Math.sin(angle)*Math.min(W,H)*0.32 };
+    nodeIds.forEach((id,i)=>{
+      const angle = (i/n) * 2 * Math.PI;
+      pos[id] = { x: lw/2 + Math.cos(angle)*Math.min(lw,lh)*0.35, y: lh/2 + Math.sin(angle)*Math.min(lw,lh)*0.35 };
     });
-    const k = Math.sqrt((W*H)/Math.max(1,ids.length)) * 1.15;
-    for(let iter=0; iter<150; iter++){
-      const disp = {}; ids.forEach(id=> disp[id]={x:0,y:0});
-      for(let i=0;i<ids.length;i++){
-        for(let j=i+1;j<ids.length;j++){
-          const a=ids[i], b=ids[j];
+    const k = Math.sqrt((lw*lh)/n) * 0.95;
+    for(let iter=0; iter<130; iter++){
+      const disp = {}; nodeIds.forEach(id=> disp[id]={x:0,y:0});
+      for(let i=0;i<n;i++){
+        for(let j=i+1;j<n;j++){
+          const a=nodeIds[i], b=nodeIds[j];
           let dx = pos[a].x-pos[b].x, dy = pos[a].y-pos[b].y;
           let dist = Math.sqrt(dx*dx+dy*dy) || 0.01;
-          let force = (k*k)/dist;
-          if(clanRootOf && clanRootOf[a] !== clanRootOf[b]) force *= 1.15;
+          const force = (k*k)/dist;
           const ux=dx/dist, uy=dy/dist;
           disp[a].x += ux*force; disp[a].y += uy*force;
           disp[b].x -= ux*force; disp[b].y -= uy*force;
         }
       }
       edgePairs.forEach(([a,b])=>{
-        if(!pos[a]||!pos[b]) return;
         let dx=pos[a].x-pos[b].x, dy=pos[a].y-pos[b].y;
         let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
         const force=(dist*dist)/k;
@@ -477,19 +477,73 @@
         disp[a].x -= ux*force; disp[a].y -= uy*force;
         disp[b].x += ux*force; disp[b].y += uy*force;
       });
-      const temp = Math.max(1, 30*(1-iter/150));
-      ids.forEach(id=>{
+      const temp = Math.max(1, 22*(1-iter/130));
+      nodeIds.forEach(id=>{
         let dx=disp[id].x, dy=disp[id].y;
         let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
         const limited = Math.min(dist, temp);
         pos[id].x += (dx/dist)*limited;
         pos[id].y += (dy/dist)*limited;
-        pos[id].x = Math.max(36, Math.min(W-36, pos[id].x));
-        pos[id].y = Math.max(36, Math.min(H-36, pos[id].y));
       });
     }
+    return pos;
+  }
+
+  function computeNetworkLayout(ids, edgePairs, clanRootOf){
+    const sig = ids.slice().sort().join(',') + '|' + edgePairs.map(e=>e.join('-')).sort().join(',');
+    if(sig === networkSignature) return networkPositions;
+
+    // Kelompokkan menjadi "pulau" orang yang saling terhubung (satu keluarga besar = satu kelompok)
+    const adj = {}; ids.forEach(id=>adj[id]=[]);
+    edgePairs.forEach(([a,b])=>{ if(adj[a]) adj[a].push(b); if(adj[b]) adj[b].push(a); });
+    const visited = new Set();
+    const clusters = [];
+    ids.forEach(id=>{
+      if(visited.has(id)) return;
+      const comp = []; const stack=[id]; visited.add(id);
+      while(stack.length){
+        const cur = stack.pop(); comp.push(cur);
+        (adj[cur]||[]).forEach(n=>{ if(!visited.has(n)){ visited.add(n); stack.push(n); } });
+      }
+      clusters.push(comp);
+    });
+    clusters.sort((a,b)=> b.length - a.length);
+
+    // Tata letak tiap kelompok secara lokal (rapat), lalu susun berdekatan dalam grid
+    const clusterData = clusters.map(comp=>{
+      const compSet = new Set(comp);
+      const localEdges = edgePairs.filter(([a,b])=>compSet.has(a)&&compSet.has(b));
+      const lpos = layoutCluster(comp, localEdges);
+      const xs = comp.map(id=>lpos[id].x), ys = comp.map(id=>lpos[id].y);
+      const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+      return { comp, lpos, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 };
+    });
+
+    const PAD = 60;
+    const cellW = Math.max(...clusterData.map(c=>c.w)) + PAD;
+    const cellH = Math.max(...clusterData.map(c=>c.h)) + PAD;
+    const cols = Math.max(1, Math.ceil(Math.sqrt(clusterData.length)));
+
+    const pos = {};
+    clusterData.forEach((c, idx)=>{
+      const row = Math.floor(idx/cols), col = idx % cols;
+      const cellOffsetX = col*cellW + PAD/2 + (cellW - PAD - c.w)/2;
+      const cellOffsetY = row*cellH + PAD/2 + (cellH - PAD - c.h)/2;
+      c.comp.forEach(id=>{
+        pos[id] = {
+          x: cellOffsetX + (c.lpos[id].x - c.minX),
+          y: cellOffsetY + (c.lpos[id].y - c.minY)
+        };
+      });
+    });
+
+    const allX = Object.values(pos).map(p=>p.x), allY = Object.values(pos).map(p=>p.y);
+    const W = Math.max(700, Math.max(...allX) + 70);
+    const H = Math.max(500, Math.max(...allY) + 70);
+
     networkPositions = pos;
     networkSignature = sig;
+    networkCanvasSize = { W, H };
     return pos;
   }
 
@@ -549,7 +603,7 @@
     return e;
   }
 
-  let state = { tab: 'tambah', focusId: null, relA: null, relB: null, lastNotice: null, editId: null, netSelA: null, netSelB: null,
+  let state = { tab: 'tambah', focusId: null, relA: null, relB: null, lastNotice: null, editId: null, netSelA: null, netSelB: null, netCenterTarget: null,
     treeView: {scale:1,x:0,y:0}, netView: {scale:1,x:0,y:0}, daftarSearch: '' };
 
   function personOptions(filterGender){
@@ -1182,6 +1236,15 @@
       applyTransform();
     }
 
+    function centerOn(px, py, targetScale){
+      const availW = viewport.clientWidth || 700;
+      const availH = heightPx;
+      viewState.scale = targetScale || Math.max(viewState.scale, 1);
+      viewState.x = availW/2 - px*viewState.scale;
+      viewState.y = availH/2 - py*viewState.scale;
+      applyTransform();
+    }
+
     let dragging=false, startX=0, startY=0, origX=0, origY=0, moved=false, suppressNextClick=false;
     viewport.addEventListener('pointerdown', e=>{
       if(e.button !== undefined && e.button !== 0) return;
@@ -1248,7 +1311,7 @@
     zoomOutBtn.addEventListener('click', ()=>{ const a = anchorPoint(); zoomAtPoint(viewState.scale-0.2, a.x, a.y); });
     resetBtn.addEventListener('click', fitToView);
 
-    return { shell, inner, viewport, fitToView };
+    return { shell, inner, viewport, fitToView, centerOn };
   }
 
   function buildTreeSVG(focusId){
@@ -1393,7 +1456,7 @@
     ids.forEach(id=>{ clanRootOf[id] = clanOf[id].rootId; });
 
     const pos = computeNetworkLayout(ids, edges, clanRootOf);
-    const W = Math.max(950, ids.length*44), H = Math.max(700, ids.length*38);
+    const { W, H } = networkCanvasSize;
 
     let highlightEdges = new Set();
     let relResult = null;
@@ -1406,19 +1469,30 @@
       }
     }
 
-    // legend
-    const legend = el('div', {class:'sk-net-legend'});
-    const seenClan = new Set();
-    ids.forEach(id=>{
-      const {color, rootId} = clanOf[id];
-      if(seenClan.has(rootId)) return;
-      seenClan.add(rootId);
-      legend.appendChild(el('span', {}, [
-        (()=>{ const s = el('span',{class:'sk-net-swatch'}); s.style.background = color; return s; })(),
-        displayName(people[rootId])
-      ]));
-    });
-    wrap.appendChild(legend);
+    // Kotak pencarian: cari nama, lalu langsung diarahkan & diperbesar ke orang itu di jaringan
+    const uniqueClanCount = new Set(ids.map(id=>clanOf[id].rootId)).size;
+    const searchWrap = el('div', {style:'display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;'});
+    const searchListId = 'sk-net-search-list';
+    const searchDatalist = el('datalist', {id: searchListId});
+    ids.forEach(id=> searchDatalist.appendChild(el('option', {value: displayName(people[id])})));
+    const searchInput = el('input', {type:'text', list: searchListId, placeholder:'🔍 Cari nama, lalu klik Cari...', style:'flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:13px;font-family:inherit;'});
+    const searchBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 16px;margin:0;'}, ['Cari →']);
+    function doSearch(){
+      const q = normalizeName(searchInput.value);
+      if(!q) return;
+      const found = ids.find(id => nameMatches(people[id], q));
+      if(!found){ alert('Nama tidak ditemukan. Coba ketik ulang atau pilih dari saran yang muncul.'); return; }
+      state.netSelA = found;
+      state.netCenterTarget = found;
+      render();
+    }
+    searchBtn.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doSearch(); } });
+    searchWrap.appendChild(searchInput);
+    searchWrap.appendChild(searchBtn);
+    searchWrap.appendChild(searchDatalist);
+    wrap.appendChild(searchWrap);
+    wrap.appendChild(el('div', {style:'font-size:11.5px;color:var(--ink-soft);margin-bottom:14px;'}, [`${ids.length} orang tercatat, terbagi dalam ${uniqueClanCount} kelompok keluarga besar (warna simpul menandakan kelompoknya).`]));
 
     let svgContent = '';
     edges.forEach(([a,b])=>{
@@ -1453,8 +1527,13 @@
     });
 
     const svgHtml = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>`;
-    const { shell, inner, fitToView } = buildZoomShell(svgHtml, state.netView, 560, W, H);
-    if(state.netView._fittedSig !== networkSignature){
+    const { shell, inner, fitToView, centerOn } = buildZoomShell(svgHtml, state.netView, 560, W, H);
+    if(state.netCenterTarget && pos[state.netCenterTarget]){
+      const target = pos[state.netCenterTarget];
+      const targetId = state.netCenterTarget;
+      state.netCenterTarget = null;
+      requestAnimationFrame(()=> centerOn(target.x, target.y, 1.4));
+    } else if(state.netView._fittedSig !== networkSignature){
       state.netView._fittedSig = networkSignature;
       requestAnimationFrame(fitToView);
     }
