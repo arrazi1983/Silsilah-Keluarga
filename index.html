@@ -145,7 +145,11 @@
   function uid(){ return 'p' + Math.random().toString(36).slice(2,10); }
 
   function normalizeName(n){ return (n||'').trim().toLowerCase().replace(/\s+/g,' '); }
-  function displayName(p){ if(!p) return '(tidak diketahui)'; return p.name || p.alias || '(Tanpa nama)'; }
+  function displayName(p){
+    if(!p) return '(tidak diketahui)';
+    if(p.name && p.alias) return `${p.name} (${p.alias})`;
+    return p.name || p.alias || '(Tanpa nama)';
+  }
 
   function compressPhotoFile(file){
     return new Promise((resolve, reject)=>{
@@ -301,7 +305,10 @@
 
   function nameMatches(p, nn){
     if(!nn) return false;
-    return normalizeName(p.name) === nn || (p.alias && normalizeName(p.alias) === nn);
+    if(normalizeName(p.name) === nn) return true;
+    if(p.alias && normalizeName(p.alias) === nn) return true;
+    if(p.name && p.alias && normalizeName(displayName(p)) === nn) return true;
+    return false;
   }
 
   // Cari orang berdasarkan nama (persis/mirip). Kalau belum ada, buat baru otomatis.
@@ -1016,11 +1023,10 @@
       const bd = formatBirth(p);
       const dd = formatDeath(p);
       const label = displayName(p);
-      const aliasLabel = (p.name && p.alias) ? ` alias ${p.alias}` : '';
       const deceasedLabel = p.isDeceased ? ` ☪ (wafat${dd ? ' ' + dd : ''})` : '';
       const subtitleParts = [p.job, p.address].filter(Boolean);
       const nameCol = el('div', {}, [
-        el('div', {}, [label + aliasLabel + (bd ? ` (lahir ${bd})` : '') + deceasedLabel])
+        el('div', {}, [label + (bd ? ` (lahir ${bd})` : '') + deceasedLabel])
       ]);
       if(subtitleParts.length) nameCol.appendChild(el('div', {style:'font-size:11.5px;color:var(--ink-soft);margin-top:2px;'}, [subtitleParts.join(' · ')]));
       const item = el('div', {class:'sk-list-item'}, [
@@ -1162,7 +1168,6 @@
     const headText = el('div', {}, [
       el('div', {style:'font-size:17px;font-weight:700;color:var(--ink);'}, [displayName(p) + (p.isDeceased ? ' ☪' : '')]),
     ]);
-    if(p.name && p.alias) headText.appendChild(el('div', {style:'font-size:13px;color:var(--brass);'}, [`alias ${p.alias}`]));
     const bd = formatBirth(p), dd = formatDeath(p);
     const statusLine = [
       p.gender==='L' ? 'Laki-laki' : 'Perempuan',
@@ -1335,7 +1340,7 @@
   }
 
   function buildTreeSVG(focusId){
-    const CARD_W = 150, CARD_H = 46, GAP_X = 26, GEN_H = 100;
+    const CARD_W = 190, CARD_H = 46, GAP_X = 26, GEN_H = 100;
     // ancestors: rows above (up to 3 gens), descendants: rows below (up to 3 gens)
     function getAncestorsRows(id, maxGen){
       const rows = []; // rows[0] = parents, rows[1]=grandparents...
@@ -1440,7 +1445,7 @@
         <g class="sk-node-card" data-id="${pid}">
           <rect class="sk-card-bg" x="${pos.x0}" y="${pos.y0}" width="${CARD_W}" height="${CARD_H}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
           ${avatarSvg}
-          <text x="${pos.x0+40}" y="${pos.y0+19}" text-anchor="start" font-size="12.5" font-weight="600" fill="${textColor}">${p.isDeceased?'☪ ':''}${escapeXml(truncate(displayName(p), 13))}</text>
+          <text x="${pos.x0+40}" y="${pos.y0+19}" text-anchor="start" font-size="12.5" font-weight="600" fill="${textColor}">${p.isDeceased?'☪ ':''}${escapeXml(truncate(displayName(p), 20))}</text>
           <text x="${pos.x0+40}" y="${pos.y0+34}" text-anchor="start" font-size="10" fill="${isFocus?'#cfd8e2':'#5c4f3d'}">${escapeXml(truncate(lifespan,15))}</text>
         </g>`;
     });
@@ -1610,7 +1615,6 @@
     if(!p) return '(tidak diketahui)';
     const bd = formatBirth(p), dd = formatDeath(p);
     let line = `<strong>${escapeXml(displayName(p))}</strong>`;
-    if(p.name && p.alias) line += ` (alias ${escapeXml(p.alias)})`;
     line += p.gender==='L' ? ' — Laki-laki' : ' — Perempuan';
     if(bd) line += `, lahir ${escapeXml(bd)}`;
     if(p.isDeceased) line += `, wafat ${dd?escapeXml(dd):'(tanggal tidak diketahui)'}`;
