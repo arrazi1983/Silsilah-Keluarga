@@ -455,9 +455,9 @@
       const angle = (i/n) * 2 * Math.PI;
       pos[id] = { x: lw/2 + Math.cos(angle)*Math.min(lw,lh)*0.4, y: lh/2 + Math.sin(angle)*Math.min(lw,lh)*0.4 };
     });
+    const REPULSE = 55000;  // gaya tolak jarak-pendek saja (biar label tak bertabrakan), cepat melemah menjauh
+    const SPRING = 0.6;     // kekuatan "tali" menarik hubungan langsung ke jarak REST — jauh lebih kuat dari gaya tolak gabungan
     const REST = 68;        // jarak yang selalu diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
-    const REPULSE = 2600;   // gaya tolak antar orang yang TIDAK berhubungan langsung, biar label tak bertabrakan
-    const SPRING = 0.09;    // kekuatan "tali" menarik hubungan langsung ke jarak REST
     for(let iter=0; iter<160; iter++){
       const disp = {}; nodeIds.forEach(id=> disp[id]={x:0,y:0});
       for(let i=0;i<n;i++){
@@ -465,7 +465,7 @@
           const a=nodeIds[i], b=nodeIds[j];
           let dx = pos[a].x-pos[b].x, dy = pos[a].y-pos[b].y;
           let dist = Math.sqrt(dx*dx+dy*dy) || 0.01;
-          const force = REPULSE/(dist*dist);
+          const force = REPULSE/(dist*dist*dist); // melemah jauh lebih cepat, cuma efektif jarak dekat
           const ux=dx/dist, uy=dy/dist;
           disp[a].x += ux*force; disp[a].y += uy*force;
           disp[b].x -= ux*force; disp[b].y -= uy*force;
@@ -619,11 +619,25 @@
   }
 
   function render(){
+    const ae = document.activeElement;
+    let focusMemory = null;
+    if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && ae.id){
+      focusMemory = { id: ae.id, selStart: ae.selectionStart, selEnd: ae.selectionEnd };
+    }
+
     root.innerHTML = '';
     const wrap = el('div', {class:'sk-wrap'});
     wrap.appendChild(renderSidebar());
     wrap.appendChild(renderMain());
     root.appendChild(wrap);
+
+    if(focusMemory){
+      const target = document.getElementById(focusMemory.id);
+      if(target){
+        target.focus();
+        try{ target.setSelectionRange(focusMemory.selStart, focusMemory.selEnd); }catch(e){}
+      }
+    }
   }
 
   function renderSidebar(){
@@ -981,7 +995,7 @@
       wrap.appendChild(el('div',{class:'sk-empty'},['Belum ada orang yang dicatat.']));
       return wrap;
     }
-    const searchInput = el('input', {type:'text', placeholder:'🔍 Cari nama atau alias...', value: state.daftarSearch,
+    const searchInput = el('input', {type:'text', id:'sk-search-daftar', placeholder:'🔍 Cari nama atau alias...', value: state.daftarSearch,
       style:'width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:14px;font-family:inherit;margin-bottom:14px;'});
     searchInput.addEventListener('input', (e)=>{ state.daftarSearch = e.target.value; render(); });
     wrap.appendChild(searchInput);
@@ -1235,7 +1249,7 @@
       const availW = viewport.clientWidth || 700;
       const availH = heightPx;
       const cw = contentW || availW, ch = contentH || availH;
-      const scale = Math.max(0.3, Math.min(availW/cw, availH/ch, 1) * 0.94);
+      const scale = Math.min(availW/cw, availH/ch, 1) * 0.94;
       viewState.scale = scale;
       viewState.x = (availW - cw*scale)/2;
       viewState.y = (availH - ch*scale)/2;
@@ -1481,7 +1495,7 @@
     const searchListId = 'sk-net-search-list';
     const searchDatalist = el('datalist', {id: searchListId});
     ids.forEach(id=> searchDatalist.appendChild(el('option', {value: displayName(people[id])})));
-    const searchInput = el('input', {type:'text', list: searchListId, placeholder:'🔍 Ketik atau pilih nama — langsung berpindah', style:'flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:13px;font-family:inherit;'});
+    const searchInput = el('input', {type:'text', id:'sk-search-network', list: searchListId, placeholder:'🔍 Ketik atau pilih nama — langsung berpindah', style:'flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:13px;font-family:inherit;'});
     const searchBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 16px;margin:0;'}, ['Cari →']);
     function jumpTo(found){
       state.netSelA = found;
