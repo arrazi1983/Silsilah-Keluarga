@@ -448,59 +448,144 @@
     return { color: clanColorAssign[root], rootId: root };
   }
 
-  // ---------- Simulasi tata-letak jaringan (force-directed sederhana) ----------
+  // ---------- Simulasi tata-letak jaringan (force-directed, sadar ukuran kotak nama) ----------
   let networkPositions = {};
   let networkSignature = '';
   let networkCanvasSize = { W: 1000, H: 700 };
+  let nodeExtentCache = {};
+  const NODE_GAP = 16; // jarak kosong minimal yang selalu dijaga antar kotak nama, supaya tak pernah bertabrakan
 
-  function layoutCluster(nodeIds, edgePairs){
+  // Perkiraan ukuran kotak visual (lingkaran + label nama) tiap orang, dipakai sebagai
+  // "ruang pribadi" saat menghitung gaya tolak — supaya nama panjang/beberapa baris tak saling menimpa.
+  function nodeExtent(id){
+    if(nodeExtentCache[id]) return nodeExtentCache[id];
+    const p = people[id];
+    const name = p ? displayName(p) : '';
+    const words = name.split(' ').filter(Boolean);
+    let lines = [];
+    if(words.length <= 1){ lines = [words[0]||'']; }
+    else if(words.length === 2){ lines = [words[0], words[1]]; }
+    else {
+      const mid = Math.ceil(words.length/2);
+      lines = [words.slice(0,1).join(' '), words.slice(1, mid+1).join(' '), words.slice(mid+1).join(' ')].filter(Boolean);
+      if(lines.length > 3) lines = [lines[0], lines.slice(1).join(' ')];
+    }
+    lines = lines.slice(0,3);
+    const labelW = Math.max(34, Math.max(...lines.map(l=>l.length), 1) * 6.5);
+    const r = 17; // radius dasar simpul (ukuran saat tidak sedang dipilih)
+    const ext = {
+      hw: Math.max(r, labelW/2 + 6),          // setengah-lebar total (kotak nama biasanya lebih lebar dari lingkaran)
+      hh: r + 13 + lines.length*13 + 8        // setengah-tinggi ke atas (radius) + jarak ke label + tinggi label
+    };
+    nodeExtentCache[id] = ext;
+    return ext;
+  }
+
+  // Jarak minimum antara dua simpul pada arah (ux,uy) tertentu, berdasarkan "kotak pribadi" elips gabungan keduanya.
+  function minSepAlong(ea, eb, ux, uy){
+    const A = ea.hw+eb.hw+NODE_GAP, B = ea.hh+eb.hh+NODE_GAP;
+    return 1/Math.sqrt((ux*ux)/(A*A) + (uy*uy)/(B*B));
+  }
+
+  // Lapisan pembersihan akhir: dorong pelan-pelan sampai benar-benar tak ada kotak nama yang tumpang tindih.
+  function resolveOverlaps(nodeIds, pos, passes){
     const n = nodeIds.length;
-    if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
-    const lw = Math.max(200, n*30), lh = Math.max(180, n*26);
-    const pos = {};
-    nodeIds.forEach((id,i)=>{
-      const angle = (i/n) * 2 * Math.PI;
-      pos[id] = { x: lw/2 + Math.cos(angle)*Math.min(lw,lh)*0.4, y: lh/2 + Math.sin(angle)*Math.min(lw,lh)*0.4 };
-    });
-    const REPULSE = 55000;  // gaya tolak jarak-pendek saja (biar label tak bertabrakan), cepat melemah menjauh
-    const SPRING = 0.6;     // kekuatan "tali" menarik hubungan langsung ke jarak REST — jauh lebih kuat dari gaya tolak gabungan
-    const REST = 68;        // jarak yang selalu diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
-    for(let iter=0; iter<160; iter++){
-      const disp = {}; nodeIds.forEach(id=> disp[id]={x:0,y:0});
+    for(let pass=0; pass<passes; pass++){
+      let moved = false;
       for(let i=0;i<n;i++){
         for(let j=i+1;j<n;j++){
           const a=nodeIds[i], b=nodeIds[j];
           let dx = pos[a].x-pos[b].x, dy = pos[a].y-pos[b].y;
           let dist = Math.sqrt(dx*dx+dy*dy) || 0.01;
-          const force = REPULSE/(dist*dist*dist); // melemah jauh lebih cepat, cuma efektif jarak dekat
           const ux=dx/dist, uy=dy/dist;
-          disp[a].x += ux*force; disp[a].y += uy*force;
-          disp[b].x -= ux*force; disp[b].y -= uy*force;
+          const minDist = minSepAlong(nodeExtent(a), nodeExtent(b), ux, uy);
+          if(dist < minDist - 0.5){
+            const push = (minDist - dist)/2 + 0.3;
+            pos[a].x += ux*push; pos[a].y += uy*push;
+            pos[b].x -= ux*push; pos[b].y -= uy*push;
+            moved = true;
+          }
         }
       }
+      if(!moved) break;
+    }
+  }
+
+  function layoutCluster(nodeIds, edgePairs){
+    const n = nodeIds.length;
+    if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
+    const pos = {};
+    const startRadius = Math.max(90, n*11);
+    nodeIds.forEach((id,i)=>{
+      const angle = (i/n) * 2 * Math.PI;
+      pos[id] = { x: Math.cos(angle)*startRadius, y: Math.sin(angle)*startRadius };
+    });
+
+    const REST = 78;        // jarak dasar yang diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
+    const SPRING = 0.09;    // kekuatan tarik ke jarak ideal pada hubungan langsung
+    const GRAVITY = 0.010;  // tarikan lemah ke pusat kelompok — mencegah cabang jauh "kabur" menjauh dari keluarganya
+    const FAR_PUSH = 2600;  // tolakan jarak-jauh yang lemah, sekadar menyebar kelompok, tak sampai merenggangkan semua orang
+    const iterations = Math.min(600, 220 + n*6);
+
+    for(let iter=0; iter<iterations; iter++){
+      const disp = {}; nodeIds.forEach(id=> disp[id]={x:0,y:0});
+
+      for(let i=0;i<n;i++){
+        for(let j=i+1;j<n;j++){
+          const a=nodeIds[i], b=nodeIds[j];
+          let dx = pos[a].x-pos[b].x, dy = pos[a].y-pos[b].y;
+          let dist = Math.sqrt(dx*dx+dy*dy) || 0.01;
+          const ux=dx/dist, uy=dy/dist;
+          const minDist = minSepAlong(nodeExtent(a), nodeExtent(b), ux, uy);
+          if(dist < minDist){
+            const push = (minDist - dist) * 0.5; // dorong tegas kalau kotak nama sudah mulai tumpang tindih
+            disp[a].x += ux*push; disp[a].y += uy*push;
+            disp[b].x -= ux*push; disp[b].y -= uy*push;
+          } else {
+            const farForce = FAR_PUSH/(dist*dist); // di luar itu, tolakan lemah saja biar tetap berdekatan
+            disp[a].x += ux*farForce; disp[a].y += uy*farForce;
+            disp[b].x -= ux*farForce; disp[b].y -= uy*farForce;
+          }
+        }
+      }
+
       edgePairs.forEach(([a,b])=>{
         let dx=pos[a].x-pos[b].x, dy=pos[a].y-pos[b].y;
         let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
-        const force = SPRING * (dist - REST); // positif = tarik mendekat, negatif = dorong menjauh sedikit
         const ux=dx/dist, uy=dy/dist;
+        const minDist = minSepAlong(nodeExtent(a), nodeExtent(b), ux, uy);
+        const restDist = Math.max(REST, minDist + 6);
+        const force = SPRING * (dist - restDist); // positif = tarik mendekat, negatif = dorong menjauh sedikit
         disp[a].x -= ux*force; disp[a].y -= uy*force;
         disp[b].x += ux*force; disp[b].y += uy*force;
       });
-      const temp = Math.max(0.5, 14*(1-iter/160));
+
+      let cx=0, cy=0;
+      nodeIds.forEach(id=>{ cx+=pos[id].x; cy+=pos[id].y; });
+      cx/=n; cy/=n;
+      nodeIds.forEach(id=>{
+        disp[id].x += (cx - pos[id].x) * GRAVITY;
+        disp[id].y += (cy - pos[id].y) * GRAVITY;
+      });
+
+      const temp = Math.max(0.6, 16*(1-iter/iterations));
       nodeIds.forEach(id=>{
         let dx=disp[id].x, dy=disp[id].y;
         let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
-        const limited = Math.min(dist, temp);
+        const limited = Math.min(dist, temp*6);
         pos[id].x += (dx/dist)*limited;
         pos[id].y += (dy/dist)*limited;
       });
     }
+
+    resolveOverlaps(nodeIds, pos, 50);
     return pos;
   }
 
   function computeNetworkLayout(ids, edgePairs, clanRootOf){
     const sig = ids.slice().sort().join(',') + '|' + edgePairs.map(e=>e.join('-')).sort().join(',');
     if(sig === networkSignature) return networkPositions;
+    nodeExtentCache = {}; // nama bisa berubah antar-render, jadi hitung ulang ukurannya
 
     // Kelompokkan menjadi "pulau" orang yang saling terhubung (satu keluarga besar = satu kelompok)
     const adj = {}; ids.forEach(id=>adj[id]=[]);
@@ -518,19 +603,25 @@
     });
     clusters.sort((a,b)=> b.length - a.length);
 
-    // Tata letak tiap kelompok secara lokal (rapat), lalu susun berdekatan dalam grid
+    // Tata letak tiap kelompok secara lokal (rapat, tanpa tabrakan), lalu susun berdekatan dalam grid antar-kelompok
     const clusterData = clusters.map(comp=>{
       const compSet = new Set(comp);
       const localEdges = edgePairs.filter(([a,b])=>compSet.has(a)&&compSet.has(b));
       const lpos = layoutCluster(comp, localEdges);
-      const xs = comp.map(id=>lpos[id].x), ys = comp.map(id=>lpos[id].y);
-      const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+      let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+      comp.forEach(id=>{
+        const e = nodeExtent(id);
+        minX = Math.min(minX, lpos[id].x - e.hw);
+        maxX = Math.max(maxX, lpos[id].x + e.hw);
+        minY = Math.min(minY, lpos[id].y - e.hh);
+        maxY = Math.max(maxY, lpos[id].y + e.hh);
+      });
       return { comp, lpos, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 };
     });
 
-    const PAD = 30;
+    const PAD = 44; // jarak antar kelompok keluarga besar yang berbeda, supaya jelas terpisah
     const totalNodes = ids.length;
-    const MAX_ROW_WIDTH = Math.max(700, Math.sqrt(totalNodes) * 130);
+    const MAX_ROW_WIDTH = Math.max(800, Math.sqrt(totalNodes) * 150);
 
     const pos = {};
     let cursorX = PAD, cursorY = PAD, rowHeight = 0;
@@ -550,9 +641,15 @@
       rowHeight = Math.max(rowHeight, c.h);
     });
 
-    const allX = Object.values(pos).map(p=>p.x), allY = Object.values(pos).map(p=>p.y);
-    const W = Math.max(700, Math.max(...allX) + 70);
-    const H = Math.max(500, Math.max(...allY) + 70);
+    // Ukuran kanvas dihitung termasuk kotak label di tepi, supaya "Tampilkan Semua" tak pernah memotong nama.
+    let maxRight = 0, maxBottom = 0;
+    ids.forEach(id=>{
+      const e = nodeExtent(id), pp = pos[id];
+      maxRight = Math.max(maxRight, pp.x + e.hw);
+      maxBottom = Math.max(maxBottom, pp.y + e.hh);
+    });
+    const W = Math.max(700, maxRight + PAD);
+    const H = Math.max(500, maxBottom + PAD);
 
     networkPositions = pos;
     networkSignature = sig;
