@@ -452,6 +452,7 @@
   let networkPositions = {};
   let networkSignature = '';
   let networkCanvasSize = { W: 1000, H: 700 };
+  let networkClanBoxes = [];
   let nodeExtentCache = {};
   const NODE_GAP = 16; // jarak kosong minimal yang selalu dijaga antar kotak nama, supaya tak pernah bertabrakan
 
@@ -513,7 +514,7 @@
 
   function layoutCluster(nodeIds, edgePairs, clanRootOf){
     const n = nodeIds.length;
-    if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
+    if(n === 1){ return { pos: { [nodeIds[0]]: {x:0,y:0} }, clanBoxesLocal: [] }; }
     const pos = {};
     const startRadius = Math.max(90, n*11);
     nodeIds.forEach((id,i)=>{
@@ -535,7 +536,7 @@
     const REST = 78;        // jarak dasar yang diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
     const SPRING = 0.09;    // kekuatan tarik ke jarak ideal pada hubungan langsung
     const GRAVITY = 0.010;  // tarikan lemah ke pusat kelompok — mencegah cabang jauh "kabur" menjauh dari keluarganya
-    const CLAN_GRAVITY = 0.028; // tarikan tambahan ke pusat klan sendiri — memisahkan klan secara visual
+    const CLAN_GRAVITY = 0.036; // tarikan tambahan ke pusat klan sendiri — memisahkan klan secara visual
     const FAR_PUSH = 2600;  // tolakan jarak-jauh yang lemah, sekadar menyebar kelompok, tak sampai merenggangkan semua orang
     const iterations = Math.min(600, 220 + n*6);
 
@@ -590,6 +591,28 @@
         });
       });
 
+      // Celah secukupnya antar klan yang berbeda dalam satu keluarga besar yang sama —
+      // cukup untuk terlihat sebagai kelompok terpisah, tapi tidak sejauh yang menyulitkan
+      // saat menarik alur hubungan antar-klan (mis. pernikahan lintas klan).
+      if(clanGroups.length > 1){
+        for(let gi=0; gi<clanGroups.length; gi++){
+          for(let gj=gi+1; gj<clanGroups.length; gj++){
+            const gA = clanGroups[gi], gB = clanGroups[gj];
+            let axc=0,ayc=0; gA.forEach(id=>{axc+=pos[id].x;ayc+=pos[id].y;}); axc/=gA.length; ayc/=gA.length;
+            let bxc=0,byc=0; gB.forEach(id=>{bxc+=pos[id].x;byc+=pos[id].y;}); bxc/=gB.length; byc/=gB.length;
+            let dx=axc-bxc, dy=ayc-byc;
+            let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
+            const ux=dx/dist, uy=dy/dist;
+            const desiredGap = 50 + Math.sqrt(gA.length+gB.length)*9;
+            if(dist < desiredGap){
+              const push = (desiredGap-dist)*0.05;
+              gA.forEach(id=>{ disp[id].x += ux*push; disp[id].y += uy*push; });
+              gB.forEach(id=>{ disp[id].x -= ux*push; disp[id].y -= uy*push; });
+            }
+          }
+        }
+      }
+
       const temp = Math.max(0.6, 16*(1-iter/iterations));
       nodeIds.forEach(id=>{
         let dx=disp[id].x, dy=disp[id].y;
@@ -601,7 +624,26 @@
     }
 
     resolveOverlaps(nodeIds, pos, 50);
-    return pos;
+
+    // Hitung kotak area per-klan (untuk digambar sebagai latar belakang lembut di jaringan),
+    // supaya pemisahan antar keluarga besar benar-benar terlihat mata, bukan cuma dugaan dari warna titik.
+    const clanBoxesLocal = [];
+    Object.keys(byClan).forEach(root=>{
+      const group = byClan[root];
+      if(group.length < 2) return; // klan dengan satu orang saja tak perlu kotak
+      let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+      group.forEach(id=>{
+        const e = nodeExtent(id);
+        minX = Math.min(minX, pos[id].x - e.hw);
+        maxX = Math.max(maxX, pos[id].x + e.hw);
+        minY = Math.min(minY, pos[id].y - 22);
+        maxY = Math.max(maxY, pos[id].y + e.hh);
+      });
+      const BOXPAD = 16;
+      clanBoxesLocal.push({ root, minX: minX-BOXPAD, maxX: maxX+BOXPAD, minY: minY-BOXPAD, maxY: maxY+BOXPAD });
+    });
+
+    return { pos, clanBoxesLocal };
   }
 
   function computeNetworkLayout(ids, edgePairs, clanRootOf){
@@ -629,7 +671,7 @@
     const clusterData = clusters.map(comp=>{
       const compSet = new Set(comp);
       const localEdges = edgePairs.filter(([a,b])=>compSet.has(a)&&compSet.has(b));
-      const lpos = layoutCluster(comp, localEdges, clanRootOf);
+      const { pos: lpos, clanBoxesLocal } = layoutCluster(comp, localEdges, clanRootOf);
       let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
       comp.forEach(id=>{
         const e = nodeExtent(id);
@@ -638,7 +680,7 @@
         minY = Math.min(minY, lpos[id].y - e.hh);
         maxY = Math.max(maxY, lpos[id].y + e.hh);
       });
-      return { comp, lpos, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 };
+      return { comp, lpos, clanBoxesLocal, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 };
     });
 
     const PAD = 44; // jarak antar kelompok keluarga besar yang berbeda, supaya jelas terpisah
@@ -646,6 +688,7 @@
     const MAX_ROW_WIDTH = Math.max(800, Math.sqrt(totalNodes) * 150);
 
     const pos = {};
+    const clanBoxes = [];
     let cursorX = PAD, cursorY = PAD, rowHeight = 0;
     clusterData.forEach(c=>{
       if(cursorX > PAD && cursorX + c.w > MAX_ROW_WIDTH){
@@ -658,6 +701,13 @@
           x: cursorX + (c.lpos[id].x - c.minX),
           y: cursorY + (c.lpos[id].y - c.minY)
         };
+      });
+      c.clanBoxesLocal.forEach(b=>{
+        clanBoxes.push({
+          root: b.root,
+          minX: cursorX + (b.minX - c.minX), maxX: cursorX + (b.maxX - c.minX),
+          minY: cursorY + (b.minY - c.minY), maxY: cursorY + (b.maxY - c.minY)
+        });
       });
       cursorX += c.w + PAD;
       rowHeight = Math.max(rowHeight, c.h);
@@ -674,6 +724,7 @@
     const H = Math.max(500, maxBottom + PAD);
 
     networkPositions = pos;
+    networkClanBoxes = clanBoxes;
     networkSignature = sig;
     networkCanvasSize = { W, H };
     return pos;
@@ -1683,6 +1734,13 @@
       return clanOf[a] ? clanOf[a].color : '#cbb98c';
     }
     let svgContent = '';
+    networkClanBoxes.forEach(box=>{
+      const col = clanColorAssign[box.root] || '#cbb98c';
+      const rootPerson = people[box.root];
+      const label = rootPerson ? `Klan ${displayName(rootPerson)}` : '';
+      svgContent += `<rect x="${box.minX}" y="${box.minY}" width="${box.maxX-box.minX}" height="${box.maxY-box.minY}" rx="18" fill="${col}" fill-opacity="0.07" stroke="${col}" stroke-opacity="0.35" stroke-width="1.4" stroke-dasharray="5,4"/>`;
+      if(label) svgContent += `<text x="${box.minX+12}" y="${box.minY+18}" font-size="10.5" font-weight="700" fill="${col}" fill-opacity="0.75">${escapeXml(label)}</text>`;
+    });
     edges.forEach(([a,b])=>{
       const key = [a,b].sort().join('|');
       const pa = pos[a], pb = pos[b];
