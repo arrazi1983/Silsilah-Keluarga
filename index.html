@@ -511,7 +511,9 @@
     }
   }
 
-  function layoutCluster(nodeIds, edgePairs, clanRootOf){
+  // Tata-letak rapat untuk sekumpulan orang tanpa peduli klan — dipakai untuk menata ISI satu klan,
+  // atau untuk kelompok yang seluruhnya berasal dari klan yang sama.
+  function denseLayout(nodeIds, edgePairs){
     const n = nodeIds.length;
     if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
     const pos = {};
@@ -521,21 +523,9 @@
       pos[id] = { x: Math.cos(angle)*startRadius, y: Math.sin(angle)*startRadius };
     });
 
-    // Kelompokkan per klan (garis ayah) supaya, walau satu keluarga besar terhubung lewat pernikahan,
-    // orang-orang dari klan yang sama tetap condong mengumpul jadi satu area yang mudah dikenali.
-    const byClan = {};
-    if(clanRootOf){
-      nodeIds.forEach(id=>{
-        const root = clanRootOf[id] || id;
-        (byClan[root] = byClan[root] || []).push(id);
-      });
-    }
-    const clanGroups = Object.values(byClan).filter(g=>g.length>1);
-
     const REST = 78;        // jarak dasar yang diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
     const SPRING = 0.09;    // kekuatan tarik ke jarak ideal pada hubungan langsung
     const GRAVITY = 0.010;  // tarikan lemah ke pusat kelompok — mencegah cabang jauh "kabur" menjauh dari keluarganya
-    const CLAN_GRAVITY = 0.028; // tarikan tambahan ke pusat klan sendiri — memisahkan klan secara visual
     const FAR_PUSH = 2600;  // tolakan jarak-jauh yang lemah, sekadar menyebar kelompok, tak sampai merenggangkan semua orang
     const iterations = Math.min(600, 220 + n*6);
 
@@ -580,16 +570,6 @@
         disp[id].y += (cy - pos[id].y) * GRAVITY;
       });
 
-      clanGroups.forEach(group=>{
-        let gx=0, gy=0;
-        group.forEach(id=>{ gx+=pos[id].x; gy+=pos[id].y; });
-        gx/=group.length; gy/=group.length;
-        group.forEach(id=>{
-          disp[id].x += (gx - pos[id].x) * CLAN_GRAVITY;
-          disp[id].y += (gy - pos[id].y) * CLAN_GRAVITY;
-        });
-      });
-
       const temp = Math.max(0.6, 16*(1-iter/iterations));
       nodeIds.forEach(id=>{
         let dx=disp[id].x, dy=disp[id].y;
@@ -601,6 +581,148 @@
     }
 
     resolveOverlaps(nodeIds, pos, 50);
+    return pos;
+  }
+
+  // Jari-jari perkiraan satu klan (dari pusatnya) setelah ditata rapat — dipakai supaya antar-klan
+  // tak pernah saling tumpang tindih saat disebar.
+  function clusterRadius(members, lpos){
+    let maxR = 30;
+    members.forEach(id=>{
+      const e = nodeExtent(id);
+      const cx = lpos[id].x, cy = lpos[id].y;
+      const d = Math.sqrt(cx*cx + cy*cy) + Math.max(e.hw, e.hh);
+      if(d > maxR) maxR = d;
+    });
+    return maxR;
+  }
+
+  // Sebar posisi PUSAT tiap klan (diperlakukan sebagai satu "simpul besar" berjari-jari clusterRadius).
+  // Klan yang tak terhubung sama sekali saling menjauh; klan yang terhubung (lewat pernikahan, dsb)
+  // ditarik lemah agar berdekatan secukupnya — cukup untuk garis penghubung tipis terlihat jelas,
+  // tanpa membuat kedua klan itu menyatu.
+  function layoutSupernodes(keys, edges, radiusOf){
+    const m = keys.length;
+    if(m === 1){ return { [keys[0]]: {x:0,y:0} }; }
+    const pos = {};
+    const startRadius = Math.max(260, m*80);
+    keys.forEach((k,i)=>{
+      const angle = (i/m) * 2 * Math.PI;
+      pos[k] = { x: Math.cos(angle)*startRadius, y: Math.sin(angle)*startRadius };
+    });
+
+    const CLAN_GAP = 90;       // jarak kosong minimal antar klan — supaya jelas terlihat terpisah
+    const BRIDGE_EXTRA = 130;  // jarak tambahan pada klan yang saling terhubung, biar tetap ada ruang & garisnya terlihat
+    const SPRING = 0.03;
+    const FAR_PUSH = 26000;
+    const iterations = Math.min(500, 180 + m*10);
+
+    for(let iter=0; iter<iterations; iter++){
+      const disp = {}; keys.forEach(k=> disp[k]={x:0,y:0});
+
+      for(let i=0;i<m;i++){
+        for(let j=i+1;j<m;j++){
+          const a=keys[i], b=keys[j];
+          let dx=pos[a].x-pos[b].x, dy=pos[a].y-pos[b].y;
+          let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
+          const ux=dx/dist, uy=dy/dist;
+          const minDist = radiusOf[a]+radiusOf[b]+CLAN_GAP;
+          if(dist < minDist){
+            const push = (minDist-dist)*0.5;
+            disp[a].x += ux*push; disp[a].y += uy*push;
+            disp[b].x -= ux*push; disp[b].y -= uy*push;
+          } else {
+            const farForce = FAR_PUSH/(dist*dist);
+            disp[a].x += ux*farForce; disp[a].y += uy*farForce;
+            disp[b].x -= ux*farForce; disp[b].y -= uy*farForce;
+          }
+        }
+      }
+
+      edges.forEach(([a,b])=>{
+        if(!pos[a] || !pos[b]) return;
+        let dx=pos[a].x-pos[b].x, dy=pos[a].y-pos[b].y;
+        let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
+        const ux=dx/dist, uy=dy/dist;
+        const minDist = radiusOf[a]+radiusOf[b]+CLAN_GAP;
+        const restDist = minDist + BRIDGE_EXTRA;
+        const force = SPRING*(dist-restDist);
+        disp[a].x -= ux*force; disp[a].y -= uy*force;
+        disp[b].x += ux*force; disp[b].y += uy*force;
+      });
+
+      let cx=0, cy=0;
+      keys.forEach(k=>{ cx+=pos[k].x; cy+=pos[k].y; });
+      cx/=m; cy/=m;
+      keys.forEach(k=>{
+        disp[k].x += (cx-pos[k].x)*0.006;
+        disp[k].y += (cy-pos[k].y)*0.006;
+      });
+
+      const temp = Math.max(0.5, 18*(1-iter/iterations));
+      keys.forEach(k=>{
+        let dx=disp[k].x, dy=disp[k].y;
+        let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
+        const limited = Math.min(dist, temp*8);
+        pos[k].x += (dx/dist)*limited;
+        pos[k].y += (dy/dist)*limited;
+      });
+    }
+
+    return pos;
+  }
+
+  function layoutCluster(nodeIds, edgePairs, clanRootOf){
+    const n = nodeIds.length;
+    if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
+
+    // Kelompokkan per klan (garis ayah).
+    const byClan = {};
+    nodeIds.forEach(id=>{
+      const root = (clanRootOf && clanRootOf[id]) || id;
+      (byClan[root] = byClan[root] || []).push(id);
+    });
+    const clanKeys = Object.keys(byClan);
+
+    // Kalau semuanya dari satu klan yang sama, tak perlu dipisah lagi — tata rapat seperti biasa.
+    if(clanKeys.length <= 1){
+      return denseLayout(nodeIds, edgePairs);
+    }
+
+    // 1) Tata tiap klan secara rapat & berdiri sendiri dulu.
+    const clanInfo = {};
+    clanKeys.forEach(key=>{
+      const members = byClan[key];
+      const memberSet = new Set(members);
+      const localEdges = edgePairs.filter(([a,b])=> memberSet.has(a) && memberSet.has(b));
+      const lpos = members.length === 1 ? { [members[0]]: {x:0,y:0} } : denseLayout(members, localEdges);
+      clanInfo[key] = { members, lpos, radius: clusterRadius(members, lpos) };
+    });
+
+    // 2) Ambil hanya garis yang MELINTASI klan berbeda (mis. pernikahan) sebagai penghubung antar-klan.
+    const clanEdgeSet = new Map();
+    edgePairs.forEach(([a,b])=>{
+      const ca = (clanRootOf && clanRootOf[a]) || a, cb = (clanRootOf && clanRootOf[b]) || b;
+      if(ca !== cb){
+        clanEdgeSet.set([ca,cb].sort().join('|'), [ca,cb]);
+      }
+    });
+    const clanEdges = Array.from(clanEdgeSet.values());
+
+    // 3) Sebar klan-klan itu berjauhan; hanya yang benar-benar terhubung yang saling didekatkan.
+    const radiusOf = {}; clanKeys.forEach(k=> radiusOf[k] = clanInfo[k].radius);
+    const clanCenters = layoutSupernodes(clanKeys, clanEdges, radiusOf);
+
+    // 4) Gabungkan posisi akhir: pusat klan + posisi lokal orang di dalam klannya.
+    const pos = {};
+    clanKeys.forEach(key=>{
+      const center = clanCenters[key];
+      clanInfo[key].members.forEach(id=>{
+        pos[id] = { x: center.x + clanInfo[key].lpos[id].x, y: center.y + clanInfo[key].lpos[id].y };
+      });
+    });
+
+    resolveOverlaps(nodeIds, pos, 30);
     return pos;
   }
 
