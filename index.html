@@ -511,7 +511,7 @@
     }
   }
 
-  function layoutCluster(nodeIds, edgePairs){
+  function layoutCluster(nodeIds, edgePairs, clanRootOf){
     const n = nodeIds.length;
     if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
     const pos = {};
@@ -521,9 +521,21 @@
       pos[id] = { x: Math.cos(angle)*startRadius, y: Math.sin(angle)*startRadius };
     });
 
+    // Kelompokkan per klan (garis ayah) supaya, walau satu keluarga besar terhubung lewat pernikahan,
+    // orang-orang dari klan yang sama tetap condong mengumpul jadi satu area yang mudah dikenali.
+    const byClan = {};
+    if(clanRootOf){
+      nodeIds.forEach(id=>{
+        const root = clanRootOf[id] || id;
+        (byClan[root] = byClan[root] || []).push(id);
+      });
+    }
+    const clanGroups = Object.values(byClan).filter(g=>g.length>1);
+
     const REST = 78;        // jarak dasar yang diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
     const SPRING = 0.09;    // kekuatan tarik ke jarak ideal pada hubungan langsung
     const GRAVITY = 0.010;  // tarikan lemah ke pusat kelompok — mencegah cabang jauh "kabur" menjauh dari keluarganya
+    const CLAN_GRAVITY = 0.028; // tarikan tambahan ke pusat klan sendiri — memisahkan klan secara visual
     const FAR_PUSH = 2600;  // tolakan jarak-jauh yang lemah, sekadar menyebar kelompok, tak sampai merenggangkan semua orang
     const iterations = Math.min(600, 220 + n*6);
 
@@ -568,6 +580,16 @@
         disp[id].y += (cy - pos[id].y) * GRAVITY;
       });
 
+      clanGroups.forEach(group=>{
+        let gx=0, gy=0;
+        group.forEach(id=>{ gx+=pos[id].x; gy+=pos[id].y; });
+        gx/=group.length; gy/=group.length;
+        group.forEach(id=>{
+          disp[id].x += (gx - pos[id].x) * CLAN_GRAVITY;
+          disp[id].y += (gy - pos[id].y) * CLAN_GRAVITY;
+        });
+      });
+
       const temp = Math.max(0.6, 16*(1-iter/iterations));
       nodeIds.forEach(id=>{
         let dx=disp[id].x, dy=disp[id].y;
@@ -607,7 +629,7 @@
     const clusterData = clusters.map(comp=>{
       const compSet = new Set(comp);
       const localEdges = edgePairs.filter(([a,b])=>compSet.has(a)&&compSet.has(b));
-      const lpos = layoutCluster(comp, localEdges);
+      const lpos = layoutCluster(comp, localEdges, clanRootOf);
       let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
       comp.forEach(id=>{
         const e = nodeExtent(id);
@@ -1558,7 +1580,7 @@
   function renderJaringan(){
     const wrap = el('div', {});
     wrap.appendChild(el('div', {class:'sk-section-title'}, ['🕸 Jaringan Keluarga']));
-    wrap.appendChild(el('div', {class:'sk-net-hint'}, ['Klik satu orang, lalu orang lain, untuk melihat alur hubungan antar keduanya disorot pada jaringan. Warna simpul menandakan asal keluarga besar (klan) masing-masing.']));
+    wrap.appendChild(el('div', {class:'sk-net-hint'}, ['Klik satu orang, lalu orang lain, untuk melihat alur hubungan antar keduanya disorot pada jaringan. Warna simpul dan garis menandakan asal keluarga besar (klan) masing-masing. Seret (drag) sebuah nama untuk mengatur ulang posisinya secara manual — posisi akan tersimpan otomatis.']));
 
     const ids = Object.keys(people);
     if(ids.length === 0) return wrap;
@@ -1577,8 +1599,26 @@
     const clanRootOf = {};
     ids.forEach(id=>{ clanRootOf[id] = clanOf[id].rootId; });
 
-    const pos = computeNetworkLayout(ids, edges, clanRootOf);
-    const { W, H } = networkCanvasSize;
+    const autoPos = computeNetworkLayout(ids, edges, clanRootOf);
+    const pos = {};
+    ids.forEach(id=>{
+      const ap = autoPos[id];
+      if(!ap) return;
+      const np = people[id].netPos;
+      pos[id] = np ? { x: ap.x + np.dx, y: ap.y + np.dy } : { x: ap.x, y: ap.y };
+    });
+    const NODE_MARGIN = 90;
+    ids.forEach(id=>{
+      const pp = pos[id]; if(!pp) return;
+      if(pp.x < NODE_MARGIN) pp.x = NODE_MARGIN;
+      if(pp.y < NODE_MARGIN) pp.y = NODE_MARGIN;
+    });
+    let { W, H } = networkCanvasSize;
+    ids.forEach(id=>{
+      const pp = pos[id]; if(!pp) return;
+      W = Math.max(W, pp.x + NODE_MARGIN);
+      H = Math.max(H, pp.y + NODE_MARGIN);
+    });
 
     let highlightEdges = new Set();
     let relResult = null;
@@ -1622,9 +1662,26 @@
     searchWrap.appendChild(searchInput);
     searchWrap.appendChild(searchBtn);
     searchWrap.appendChild(searchDatalist);
+    const resetLayoutBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;font-size:12.5px;'}, ['↺ Reset Tata Letak']);
+    resetLayoutBtn.addEventListener('click', ()=>{
+      if(!window.confirm('Ini akan mengembalikan SEMUA posisi nama yang pernah Anda geser manual ke susunan otomatis. Lanjutkan?')) return;
+      let changed = false;
+      ids.forEach(id=>{ if(people[id].netPos){ delete people[id].netPos; changed = true; } });
+      if(changed) saveData();
+      render();
+    });
+    searchWrap.appendChild(resetLayoutBtn);
     wrap.appendChild(searchWrap);
     wrap.appendChild(el('div', {style:'font-size:11.5px;color:var(--ink-soft);margin-bottom:14px;'}, [`${ids.length} orang tercatat, terbagi dalam ${uniqueClanCount} kelompok keluarga besar (warna simpul menandakan kelompoknya).`]));
 
+    function edgeColor(a,b){
+      const pa = people[a], pb = people[b];
+      if(pa && (pa.fatherId===b || pa.motherId===b) && clanOf[a]) return clanOf[a].color;
+      if(pb && (pb.fatherId===a || pb.motherId===a) && clanOf[b]) return clanOf[b].color;
+      if(pa && pa.gender==='L' && clanOf[a]) return clanOf[a].color;
+      if(pb && pb.gender==='L' && clanOf[b]) return clanOf[b].color;
+      return clanOf[a] ? clanOf[a].color : '#cbb98c';
+    }
     let svgContent = '';
     edges.forEach(([a,b])=>{
       const key = [a,b].sort().join('|');
@@ -1632,7 +1689,8 @@
       if(!pa || !pb) return;
       const isHi = highlightEdges.has(key);
       const isSpouse = people[a] && people[a].spouseIds.includes(b);
-      svgContent += `<line x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${isHi?'#BA7517':'#cbb98c'}" stroke-width="${isHi?3:(isSpouse?1.5:1.2)}" ${isSpouse&&!isHi?'stroke-dasharray="3,3"':''} opacity="${isHi?1:0.65}"/>`;
+      const col = isHi ? '#BA7517' : edgeColor(a,b);
+      svgContent += `<line data-a="${a}" data-b="${b}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${col}" stroke-width="${isHi?3:(isSpouse?1.6:1.3)}" ${isSpouse&&!isHi?'stroke-dasharray="3,3"':''} opacity="${isHi?1:0.55}"/>`;
     });
     ids.forEach(id=>{
       const p = people[id];
@@ -1661,7 +1719,7 @@
       const labelTopY = pp.y + r + 13;
       const tspans = lines.map((l,i)=>`<tspan x="${pp.x}" y="${labelTopY + i*lineH}">${escapeXml(l)}</tspan>`).join('');
       svgContent += `
-        <g class="sk-net-node" data-id="${id}">
+        <g class="sk-net-node" data-id="${id}" style="cursor:grab;">
           <title>${escapeXml(displayName(p))}${p.job?(' · '+escapeXml(p.job)):''}</title>
           ${photoOrFill}
           <rect x="${pp.x - labelW/2 - 4}" y="${labelTopY-11}" width="${labelW+8}" height="${lines.length*lineH+6}" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
@@ -1681,14 +1739,55 @@
       requestAnimationFrame(fitToView);
     }
     inner.querySelectorAll('.sk-net-node').forEach(g=>{
-      g.addEventListener('click', ()=>{
-        const id = g.getAttribute('data-id');
-        if(state.netSelA === id){ state.netSelA = null; }
-        else if(state.netSelB === id){ state.netSelB = null; }
-        else if(!state.netSelA){ state.netSelA = id; }
-        else if(!state.netSelB){ state.netSelB = id; }
-        else { state.netSelA = id; state.netSelB = null; }
-        render();
+      const id = g.getAttribute('data-id');
+      g.addEventListener('pointerdown', e=>{
+        e.stopPropagation();
+        e.preventDefault();
+        try{ g.setPointerCapture(e.pointerId); }catch(err){}
+        const startClientX = e.clientX, startClientY = e.clientY;
+        const scaleAtStart = state.netView.scale || 1;
+        const basePos = people[id].netPos ? { dx: people[id].netPos.dx, dy: people[id].netPos.dy } : { dx:0, dy:0 };
+        const origin = { x: pos[id].x, y: pos[id].y };
+        const lines = Array.from(inner.querySelectorAll(`line[data-a="${id}"], line[data-b="${id}"]`));
+        let moved = false;
+        g.style.cursor = 'grabbing';
+
+        function onMove(ev){
+          const dxScreen = ev.clientX - startClientX;
+          const dyScreen = ev.clientY - startClientY;
+          if(!moved && (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3)) moved = true;
+          if(!moved) return;
+          const dx = dxScreen / scaleAtStart;
+          const dy = dyScreen / scaleAtStart;
+          g.setAttribute('transform', `translate(${dx},${dy})`);
+          lines.forEach(line=>{
+            if(line.getAttribute('data-a') === id){ line.setAttribute('x1', origin.x + dx); line.setAttribute('y1', origin.y + dy); }
+            if(line.getAttribute('data-b') === id){ line.setAttribute('x2', origin.x + dx); line.setAttribute('y2', origin.y + dy); }
+          });
+        }
+        function onUp(ev){
+          g.removeEventListener('pointermove', onMove);
+          g.removeEventListener('pointerup', onUp);
+          g.removeEventListener('pointercancel', onUp);
+          g.style.cursor = 'grab';
+          if(moved){
+            const dx = (ev.clientX - startClientX) / scaleAtStart;
+            const dy = (ev.clientY - startClientY) / scaleAtStart;
+            people[id].netPos = { dx: basePos.dx + dx, dy: basePos.dy + dy };
+            saveData();
+            render();
+          } else {
+            if(state.netSelA === id){ state.netSelA = null; }
+            else if(state.netSelB === id){ state.netSelB = null; }
+            else if(!state.netSelA){ state.netSelA = id; }
+            else if(!state.netSelB){ state.netSelB = id; }
+            else { state.netSelA = id; state.netSelB = null; }
+            render();
+          }
+        }
+        g.addEventListener('pointermove', onMove);
+        g.addEventListener('pointerup', onUp);
+        g.addEventListener('pointercancel', onUp);
       });
     });
     wrap.appendChild(shell);
