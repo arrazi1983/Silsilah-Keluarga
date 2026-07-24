@@ -1732,6 +1732,21 @@
     const pos = computeNetworkLayout(ids, edges, clanRootOf);
     const { W, H } = networkCanvasSize;
 
+    // "Bekukan" posisi semua orang begitu pertama kali ditampilkan — bukan cuma yang pernah digeser
+    // manual. Kalau tidak, setiap kali ada tambahan/perubahan data, simulasi tata-letak dihitung ulang
+    // dari nol untuk semua orang yang belum "dikunci", dan hasilnya bisa sedikit berbeda tiap kali walau
+    // orangnya sama persis — ini yang membuat jaringan terasa "berubah sendiri". Dengan membekukan semua
+    // posisi begitu tampil, penambahan orang baru berikutnya hanya menata orang yang benar-benar baru
+    // di sekitar kerabatnya, tanpa menyentuh siapa pun yang sudah pernah ditampilkan sebelumnya.
+    let anyNewlyFixed = false;
+    ids.forEach(id=>{
+      if(!people[id].netPos && pos[id]){
+        people[id].netPos = { x: pos[id].x, y: pos[id].y };
+        anyNewlyFixed = true;
+      }
+    });
+    if(anyNewlyFixed) saveData();
+
     let highlightEdges = new Set();
     let relResult = null;
     if(state.netSelA && state.netSelB && state.netSelA !== state.netSelB){
