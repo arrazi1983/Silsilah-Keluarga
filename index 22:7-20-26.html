@@ -1,0 +1,1798 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Silsilah Keluarga</title>
+<meta name="description" content="Buku catatan keturunan keluarga besar — pohon, jaringan, dan hubungan kekerabatan otomatis.">
+<meta name="theme-color" content="#253a52">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Silsilah">
+<style>
+  html, body { margin:0; padding:0; background:#f2ead9; font-family:'Source Sans 3', Georgia, sans-serif; }
+</style>
+</head>
+<body>
+<div id="silsilah-root"></div>
+<style>
+  #silsilah-root {
+    --paper: #f2ead9;
+    --paper-deep: #e7dcc2;
+    --ink: #2c2117;
+    --ink-soft: #5c4f3d;
+    --indigo: #253a52;
+    --brass: #a9762f;
+    --brass-light: #c9974f;
+    --thread: #1f6b47;
+    --line: #cbb98c;
+    --danger: #8c3a2b;
+    font-family: 'Source Sans 3', Georgia, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 14px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.05);
+  }
+  #silsilah-root * { box-sizing: border-box; }
+  .sk-wrap { display: flex; min-height: 640px; }
+  .sk-side {
+    width: 300px; flex-shrink: 0;
+    background: var(--paper-deep);
+    border-right: 1px solid var(--line);
+    padding: 22px 18px;
+    overflow-y: auto;
+    max-height: 720px;
+  }
+  .sk-main { flex: 1; padding: 22px 26px; overflow-y: auto; max-height: 720px; }
+  .sk-brand {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 22px; font-weight: 700; letter-spacing: 0.02em;
+    color: var(--indigo); margin: 0 0 2px 0;
+  }
+  .sk-brand-sub { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--brass); margin-bottom: 18px; }
+  .sk-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .sk-tab {
+    background: none; border: none; cursor: pointer; padding: 7px 8px;
+    font-size: 12px; color: var(--ink-soft); border-bottom: 2px solid transparent;
+    font-family: inherit; transition: all .15s; white-space: nowrap;
+  }
+  .sk-tab.active { color: var(--indigo); border-bottom-color: var(--brass); font-weight: 600; }
+  .sk-field { margin-bottom: 12px; }
+  .sk-field label { display: block; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 5px; }
+  .sk-field input, .sk-field select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fffdf8; font-size: 14px; color: var(--ink); font-family: inherit;
+  }
+  .sk-field input:focus, .sk-field select:focus { outline: 2px solid var(--brass-light); outline-offset: 1px; }
+  .sk-btn {
+    width: 100%; padding: 10px; border: none; border-radius: 6px; cursor: pointer;
+    background: var(--indigo); color: #fff; font-size: 14px; font-weight: 600; font-family: inherit;
+    letter-spacing: 0.02em; margin-top: 4px;
+  }
+  .sk-btn:hover { background: #1c2d40; }
+  .sk-btn.secondary { background: transparent; color: var(--indigo); border: 1px solid var(--indigo); }
+  .sk-btn.secondary:hover { background: rgba(37,58,82,0.06); }
+  .sk-radio-row { display: flex; gap: 8px; }
+  .sk-radio-row label {
+    flex: 1; text-align: center; padding: 7px 4px; border: 1px solid var(--line); border-radius: 6px;
+    font-size: 13px; cursor: pointer; text-transform: none; color: var(--ink-soft);
+  }
+  .sk-radio-row input { display: none; }
+  .sk-radio-row input:checked + span { color: var(--indigo); font-weight: 700; }
+  .sk-radio-row label:has(input:checked) { border-color: var(--brass); background: rgba(169,118,47,0.08); }
+
+  .sk-banner {
+    background: #eaf3ec; border: 1px solid var(--thread); border-left: 4px solid var(--thread);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; font-size: 13.5px; color: #1a4530;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .sk-banner .icon { font-size: 16px; }
+  .sk-empty {
+    text-align: center; padding: 60px 20px; color: var(--ink-soft);
+  }
+  .sk-empty .glyph { font-size: 34px; margin-bottom: 10px; }
+
+  .sk-search-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .sk-search-row select { flex: 1; min-width: 180px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fffdf8; font-family: inherit; }
+
+  .sk-list-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 14px; cursor: pointer;
+  }
+  .sk-list-item:hover { background: rgba(169,118,47,0.06); }
+  .sk-tag { font-size: 10px; padding: 2px 7px; border-radius: 10px; letter-spacing: 0.03em; }
+  .sk-tag.L { background: #dfe9f2; color: var(--indigo); }
+  .sk-tag.P { background: #f4e3d6; color: var(--danger); }
+
+  .sk-section-title {
+    font-family: 'Playfair Display', Georgia, serif; font-size: 17px; color: var(--indigo);
+    margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px;
+  }
+  .sk-focus-select { margin-bottom: 18px; }
+
+  svg.sk-tree text { font-family: 'Source Sans 3', sans-serif; }
+  .sk-node-card { cursor: pointer; }
+  .sk-node-card:hover rect.sk-card-bg { stroke: var(--brass); stroke-width: 2; }
+
+  .sk-relation-result {
+    margin-top: 18px; padding: 16px; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px;
+  }
+  .sk-relation-title { font-family: 'Playfair Display', Georgia, serif; font-size: 18px; color: var(--indigo); margin-bottom: 8px; }
+  .sk-chain { font-size: 13px; color: var(--ink-soft); line-height: 1.8; }
+  .sk-chain .node { color: var(--ink); font-weight: 600; }
+
+  .sk-net-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 14px; font-size: 12.5px; color: var(--ink-soft); }
+  .sk-net-swatch { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  .sk-net-hint { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 10px; }
+  .sk-net-node { cursor: pointer; }
+  .sk-net-node:hover circle.sk-net-dot { stroke-width: 3; }
+  .sk-chain .arrow { color: var(--brass); margin: 0 4px; }
+</style>
+
+<script>
+(function(){
+  const root = document.getElementById('silsilah-root');
+  let people = {};
+  let ready = false;
+
+  const STORE_KEY = 'silsilah-data';
+
+  function uid(){ return 'p' + Math.random().toString(36).slice(2,10); }
+
+  function normalizeName(n){ return (n||'').trim().toLowerCase().replace(/\s+/g,' '); }
+  function displayName(p){ if(!p) return '(tidak diketahui)'; return p.name || p.alias || '(Tanpa nama)'; }
+
+  function compressPhotoFile(file){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        const img = new Image();
+        img.onload = ()=>{
+          const maxDim = 200;
+          let w = img.width, h = img.height;
+          if(w > h){ if(w > maxDim){ h = Math.round(h*maxDim/w); w = maxDim; } }
+          else { if(h > maxDim){ w = Math.round(w*maxDim/h); h = maxDim; } }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.72));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function avatarEl(p, size){
+    size = size || 34;
+    const initial = (displayName(p) || '?').trim().charAt(0).toUpperCase();
+    const bg = p.gender === 'L' ? '#dfe9f2' : '#f4e3d6';
+    const fg = p.gender === 'L' ? '#253a52' : '#8c3a2b';
+    if(p.photo){
+      return el('img', {src: p.photo, style:`width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--line);`});
+    }
+    const d = el('div', {style:`width:${size}px;height:${size}px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*0.42)}px;font-weight:700;background:${bg};color:${fg};`}, [initial]);
+    return d;
+  }
+  function unlinkChildFromParent(childId, parentId){
+    if(!parentId) return;
+    const p = people[parentId];
+    if(p) p.childrenIds = p.childrenIds.filter(cid => cid !== childId);
+  }
+
+  async function loadData(){
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(raw){ people = JSON.parse(raw); }
+    }catch(e){ people = {}; }
+    ready = true;
+  }
+  async function saveData(){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(people)); }
+    catch(e){ console.error('gagal menyimpan (mungkin penyimpanan penuh)', e); alert('Gagal menyimpan. Kemungkinan penyimpanan browser penuh — coba hapus beberapa foto besar atau ekspor & bersihkan data lama.'); }
+  }
+
+  // ---------- Data model helpers ----------
+  function newPerson(data){
+    const id = uid();
+    people[id] = {
+      id, name: data.name || '', alias: data.alias || '', gender: data.gender, photo: data.photo || '',
+      birthDay: data.birthDay || '', birthMonth: data.birthMonth || '', birthYear: data.birthYear || '',
+      address: data.address || '', contact: data.contact || '', job: data.job || '',
+      isDeceased: !!data.isDeceased,
+      deathDay: data.deathDay || '', deathMonth: data.deathMonth || '', deathYear: data.deathYear || '',
+      fatherId: data.fatherId || null, motherId: data.motherId || null,
+      spouseIds: [], childrenIds: [], notes: data.notes || ''
+    };
+    return id;
+  }
+
+  function updatePersonBasics(id, data){
+    const p = people[id];
+    if(!p) return;
+    p.name = data.name || '';
+    p.alias = data.alias || '';
+    p.gender = data.gender;
+    p.photo = data.photo || '';
+    p.birthDay = data.birthDay || '';
+    p.birthMonth = data.birthMonth || '';
+    p.birthYear = data.birthYear || '';
+    p.address = data.address || '';
+    p.contact = data.contact || '';
+    p.job = data.job || '';
+    p.isDeceased = !!data.isDeceased;
+    p.deathDay = data.deathDay || '';
+    p.deathMonth = data.deathMonth || '';
+    p.deathYear = data.deathYear || '';
+    p.notes = data.notes || '';
+  }
+
+  function linkChildToParent(childId, parentId){
+    if(!parentId) return;
+    const p = people[parentId];
+    if(p && !p.childrenIds.includes(childId)) p.childrenIds.push(childId);
+  }
+
+  // Menyambungkan anak ke ayah/ibu DUA ARAH: childrenIds milik ortu, dan fatherId/motherId milik anak.
+  function linkChildBothWays(childId, fatherId, motherId){
+    const c = people[childId];
+    if(!c) return;
+    if(fatherId){ if(!c.fatherId) c.fatherId = fatherId; linkChildToParent(childId, fatherId); }
+    if(motherId){ if(!c.motherId) c.motherId = motherId; linkChildToParent(childId, motherId); }
+  }
+
+  function deletePerson(id){
+    const p = people[id];
+    if(!p) return;
+    unlinkChildFromParent(id, p.fatherId);
+    unlinkChildFromParent(id, p.motherId);
+    p.spouseIds.forEach(sid=>{ const s = people[sid]; if(s) s.spouseIds = s.spouseIds.filter(x=>x!==id); });
+    Object.values(people).forEach(op=>{
+      if(op.fatherId === id) op.fatherId = null;
+      if(op.motherId === id) op.motherId = null;
+      op.childrenIds = op.childrenIds.filter(x=>x!==id);
+    });
+    delete people[id];
+  }
+
+  function linkSpouses(idA, idB){
+    if(!idA || !idB || idA === idB) return;
+    const a = people[idA], b = people[idB];
+    if(a && !a.spouseIds.includes(idB)) a.spouseIds.push(idB);
+    if(b && !b.spouseIds.includes(idA)) b.spouseIds.push(idA);
+  }
+
+  function addPerson(data){
+    const id = newPerson(data);
+    linkChildToParent(id, data.fatherId);
+    linkChildToParent(id, data.motherId);
+    if(data.spouseId) linkSpouses(id, data.spouseId);
+    return id;
+  }
+
+  async function seedDemoData(){
+    const karta = addPerson({name:'Karta', gender:'L'});
+    const inah = addPerson({name:'Inah', gender:'P'});
+    const somad = addPerson({name:'Somad', gender:'L', fatherId:karta, motherId:inah});
+    const marto = addPerson({name:'Marto', gender:'L', fatherId:karta, motherId:inah});
+    const aminah = addPerson({name:'Aminah', gender:'P'});
+    linkSpouses(somad, aminah);
+    const wongso = addPerson({name:'Wongso', gender:'L'});
+    const sarinah = addPerson({name:'Sarinah', gender:'P'});
+    const rahman = addPerson({name:'Rahman', gender:'L', fatherId:somad, motherId:aminah});
+    const siti = addPerson({name:'Siti', gender:'P', fatherId:wongso, motherId:sarinah});
+    linkSpouses(rahman, siti);
+    addPerson({name:'Wati', gender:'P', fatherId:marto});
+    const ujang = addPerson({name:'Ujang', gender:'L', fatherId:rahman, motherId:siti});
+    addPerson({name:'Euis', gender:'P', fatherId:rahman, motherId:siti});
+    addPerson({name:'Dede', gender:'L', fatherId:ujang});
+    people[karta].isDeceased = true; people[karta].deathYear = '1978';
+    people[inah].isDeceased = true; people[inah].deathYear = '1981';
+    people[somad].isDeceased = true; people[somad].deathYear = '2009';
+    await saveData();
+  }
+
+  function nameMatches(p, nn){
+    if(!nn) return false;
+    return normalizeName(p.name) === nn || (p.alias && normalizeName(p.alias) === nn);
+  }
+
+  // Cari orang berdasarkan nama (persis/mirip). Kalau belum ada, buat baru otomatis.
+  function resolveOrCreatePerson(rawInput, guessGender, currentLinkedId){
+    if(!rawInput) return null;
+    let name = rawInput.trim();
+    let gender = guessGender;
+    const genderTag = name.match(/\(([LP])\)\s*$/i);
+    if(genderTag){ gender = genderTag[1].toUpperCase(); name = name.replace(/\(([LP])\)\s*$/i,'').trim(); }
+    if(!name) return null;
+    const nn = normalizeName(name);
+    const matches = Object.values(people).filter(p => nameMatches(p, nn));
+    if(matches.length){
+      // Kalau nama yang diketik masih sama dengan sambungan yang sudah ada sebelumnya, tidak perlu tanya lagi.
+      if(currentLinkedId && matches.some(m => m.id === currentLinkedId)){
+        return { id: currentLinkedId, isNew: false };
+      }
+      const existing = matches[0];
+      const bd = formatBirth(existing);
+      const parentInfo = [];
+      if(existing.fatherId) parentInfo.push('ayah: '+displayName(people[existing.fatherId]));
+      if(existing.motherId) parentInfo.push('ibu: '+displayName(people[existing.motherId]));
+      const detail = [bd?('lahir '+bd):null, parentInfo.length?parentInfo.join(', '):null].filter(Boolean).join(' · ');
+      const extra = matches.length > 1 ? `\n\n(Ada ${matches.length} orang dengan nama sama di data — ini yang pertama ditemukan.)` : '';
+      const msg = `Sudah ada "${displayName(existing)}"${detail?' ('+detail+')':''} di data.${extra}\n\nApakah ini ORANG YANG SAMA dengan yang Anda maksud?\n\nOK = Ya, sambungkan ke data yang sudah ada\nBatal = Bukan, ini orang lain — buat data baru terpisah`;
+      const isSame = window.confirm(msg);
+      if(isSame) return { id: existing.id, isNew: false };
+    }
+    const id = newPerson({name, gender: gender || 'L'});
+    return { id, isNew: true };
+  }
+
+  const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  function formatBirth(p){
+    const monthLabel = p.birthMonth ? MONTH_NAMES[parseInt(p.birthMonth,10)] : '';
+    const parts = [p.birthDay, monthLabel, p.birthYear].filter(Boolean);
+    return parts.join(' ');
+  }
+  function formatDeath(p){
+    const monthLabel = p.deathMonth ? MONTH_NAMES[parseInt(p.deathMonth,10)] : '';
+    const parts = [p.deathDay, monthLabel, p.deathYear].filter(Boolean);
+    return parts.join(' ');
+  }
+
+  // detect people with same normalized name but different id (possible same person from another branch)
+  function detectPossibleMatches(name, excludeId){
+    const nn = normalizeName(name);
+    return Object.values(people).filter(p => p.id !== excludeId && nameMatches(p, nn));
+  }
+
+  // BFS over undirected relation graph (parent-child + spouse) to find connection path
+  function buildAdjacency(){
+    const adj = {};
+    Object.values(people).forEach(p => {
+      adj[p.id] = adj[p.id] || [];
+      if(p.fatherId){ adj[p.id].push({to:p.fatherId, type:'father'}); adj[p.fatherId] = adj[p.fatherId]||[]; adj[p.fatherId].push({to:p.id, type:'child'}); }
+      if(p.motherId){ adj[p.id].push({to:p.motherId, type:'mother'}); adj[p.motherId] = adj[p.motherId]||[]; adj[p.motherId].push({to:p.id, type:'child'}); }
+      p.spouseIds.forEach(sid => { adj[p.id].push({to:sid, type:'spouse'}); });
+    });
+    return adj;
+  }
+
+  function findPath(fromId, toId){
+    if(fromId === toId) return null;
+    const adj = buildAdjacency();
+    const visited = new Set([fromId]);
+    const queue = [[fromId]];
+    while(queue.length){
+      const path = queue.shift();
+      const last = path[path.length-1];
+      const edges = adj[last] || [];
+      for(const e of edges){
+        if(visited.has(e.to)) continue;
+        const newPath = path.concat([e.to]);
+        if(e.to === toId) return newPath;
+        visited.add(e.to);
+        queue.push(newPath);
+      }
+    }
+    return null;
+  }
+
+  function ancestorsMap(id){
+    // map ancestorId -> generation distance (0 = self)
+    const map = {[id]: 0};
+    let frontier = [id];
+    let gen = 0;
+    while(frontier.length){
+      gen++;
+      const next = [];
+      frontier.forEach(pid=>{
+        const p = people[pid];
+        if(!p) return;
+        [p.fatherId, p.motherId].forEach(par=>{
+          if(par && !(par in map)){ map[par] = gen; next.push(par); }
+        });
+      });
+      frontier = next;
+    }
+    return map;
+  }
+
+  function findCommonAncestorRelation(idA, idB){
+    const ancA = ancestorsMap(idA);
+    const ancB = ancestorsMap(idB);
+    let best = null;
+    Object.keys(ancA).forEach(pid=>{
+      if(pid in ancB){
+        const total = ancA[pid] + ancB[pid];
+        if(!best || total < best.total) best = {id: pid, gapA: ancA[pid], gapB: ancB[pid], total};
+      }
+    });
+    return best;
+  }
+
+  // ---------- Klan (pewarnaan per keluarga besar) ----------
+  const CLAN_PALETTE = ['#253a52','#0f6e8c','#993c1d','#712b13','#5f3a99','#0f6e56','#993556','#854f0b','#3b6d11'];
+  let clanRootCache = {};
+  function getClanRoot(id, seen){
+    seen = seen || new Set();
+    if(seen.has(id)) return id;
+    seen.add(id);
+    if(clanRootCache[id]) return clanRootCache[id];
+    const p = people[id];
+    if(!p) return id;
+    const rootId = p.fatherId ? getClanRoot(p.fatherId, seen) : id;
+    clanRootCache[id] = rootId;
+    return rootId;
+  }
+  let clanColorAssign = {};
+  function getClanColor(id){
+    clanRootCache = {};
+    const root = getClanRoot(id);
+    if(!(root in clanColorAssign)){
+      clanColorAssign[root] = CLAN_PALETTE[Object.keys(clanColorAssign).length % CLAN_PALETTE.length];
+    }
+    return { color: clanColorAssign[root], rootId: root };
+  }
+
+  // ---------- Simulasi tata-letak jaringan (force-directed sederhana) ----------
+  let networkPositions = {};
+  let networkSignature = '';
+  let networkCanvasSize = { W: 1000, H: 700 };
+
+  function layoutCluster(nodeIds, edgePairs){
+    const n = nodeIds.length;
+    if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
+    const lw = Math.max(200, n*30), lh = Math.max(180, n*26);
+    const pos = {};
+    nodeIds.forEach((id,i)=>{
+      const angle = (i/n) * 2 * Math.PI;
+      pos[id] = { x: lw/2 + Math.cos(angle)*Math.min(lw,lh)*0.4, y: lh/2 + Math.sin(angle)*Math.min(lw,lh)*0.4 };
+    });
+    const REPULSE = 55000;  // gaya tolak jarak-pendek saja (biar label tak bertabrakan), cepat melemah menjauh
+    const SPRING = 0.6;     // kekuatan "tali" menarik hubungan langsung ke jarak REST — jauh lebih kuat dari gaya tolak gabungan
+    const REST = 68;        // jarak yang selalu diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
+    for(let iter=0; iter<160; iter++){
+      const disp = {}; nodeIds.forEach(id=> disp[id]={x:0,y:0});
+      for(let i=0;i<n;i++){
+        for(let j=i+1;j<n;j++){
+          const a=nodeIds[i], b=nodeIds[j];
+          let dx = pos[a].x-pos[b].x, dy = pos[a].y-pos[b].y;
+          let dist = Math.sqrt(dx*dx+dy*dy) || 0.01;
+          const force = REPULSE/(dist*dist*dist); // melemah jauh lebih cepat, cuma efektif jarak dekat
+          const ux=dx/dist, uy=dy/dist;
+          disp[a].x += ux*force; disp[a].y += uy*force;
+          disp[b].x -= ux*force; disp[b].y -= uy*force;
+        }
+      }
+      edgePairs.forEach(([a,b])=>{
+        let dx=pos[a].x-pos[b].x, dy=pos[a].y-pos[b].y;
+        let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
+        const force = SPRING * (dist - REST); // positif = tarik mendekat, negatif = dorong menjauh sedikit
+        const ux=dx/dist, uy=dy/dist;
+        disp[a].x -= ux*force; disp[a].y -= uy*force;
+        disp[b].x += ux*force; disp[b].y += uy*force;
+      });
+      const temp = Math.max(0.5, 14*(1-iter/160));
+      nodeIds.forEach(id=>{
+        let dx=disp[id].x, dy=disp[id].y;
+        let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
+        const limited = Math.min(dist, temp);
+        pos[id].x += (dx/dist)*limited;
+        pos[id].y += (dy/dist)*limited;
+      });
+    }
+    return pos;
+  }
+
+  function computeNetworkLayout(ids, edgePairs, clanRootOf){
+    const sig = ids.slice().sort().join(',') + '|' + edgePairs.map(e=>e.join('-')).sort().join(',');
+    if(sig === networkSignature) return networkPositions;
+
+    // Kelompokkan menjadi "pulau" orang yang saling terhubung (satu keluarga besar = satu kelompok)
+    const adj = {}; ids.forEach(id=>adj[id]=[]);
+    edgePairs.forEach(([a,b])=>{ if(adj[a]) adj[a].push(b); if(adj[b]) adj[b].push(a); });
+    const visited = new Set();
+    const clusters = [];
+    ids.forEach(id=>{
+      if(visited.has(id)) return;
+      const comp = []; const stack=[id]; visited.add(id);
+      while(stack.length){
+        const cur = stack.pop(); comp.push(cur);
+        (adj[cur]||[]).forEach(n=>{ if(!visited.has(n)){ visited.add(n); stack.push(n); } });
+      }
+      clusters.push(comp);
+    });
+    clusters.sort((a,b)=> b.length - a.length);
+
+    // Tata letak tiap kelompok secara lokal (rapat), lalu susun berdekatan dalam grid
+    const clusterData = clusters.map(comp=>{
+      const compSet = new Set(comp);
+      const localEdges = edgePairs.filter(([a,b])=>compSet.has(a)&&compSet.has(b));
+      const lpos = layoutCluster(comp, localEdges);
+      const xs = comp.map(id=>lpos[id].x), ys = comp.map(id=>lpos[id].y);
+      const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+      return { comp, lpos, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 };
+    });
+
+    const PAD = 30;
+    const totalNodes = ids.length;
+    const MAX_ROW_WIDTH = Math.max(700, Math.sqrt(totalNodes) * 130);
+
+    const pos = {};
+    let cursorX = PAD, cursorY = PAD, rowHeight = 0;
+    clusterData.forEach(c=>{
+      if(cursorX > PAD && cursorX + c.w > MAX_ROW_WIDTH){
+        cursorX = PAD;
+        cursorY += rowHeight + PAD;
+        rowHeight = 0;
+      }
+      c.comp.forEach(id=>{
+        pos[id] = {
+          x: cursorX + (c.lpos[id].x - c.minX),
+          y: cursorY + (c.lpos[id].y - c.minY)
+        };
+      });
+      cursorX += c.w + PAD;
+      rowHeight = Math.max(rowHeight, c.h);
+    });
+
+    const allX = Object.values(pos).map(p=>p.x), allY = Object.values(pos).map(p=>p.y);
+    const W = Math.max(700, Math.max(...allX) + 70);
+    const H = Math.max(500, Math.max(...allY) + 70);
+
+    networkPositions = pos;
+    networkSignature = sig;
+    networkCanvasSize = { W, H };
+    return pos;
+  }
+
+  const ancTerms = ['','Orang tua (Ayah/Ibu)','Kakek/Nenek','Buyut','Canggah','Wareng','Udheg-udheg'];
+  const descTerms = ['','Anak','Cucu','Cicit','Piut','Generasi ke-5','Generasi ke-6'];
+
+  function describeRelation(idA, idB){
+    const path = findPath(idA, idB);
+    if(!path) return { text: 'Belum ada jalur penghubung yang tercatat antara kedua orang ini.', path: null };
+
+    const common = findCommonAncestorRelation(idA, idB);
+    let label = '';
+    const nameA = displayName(people[idA]), nameB = displayName(people[idB]);
+    if(common){
+      const {gapA, gapB, id: cid} = common;
+      const commonName = displayName(people[cid]);
+      if(gapA === 0){
+        label = `${nameB} adalah ${ (descTerms[gapB]||('generasi ke-'+gapB)).toLowerCase() } dari ${nameA}.`;
+      } else if(gapB === 0){
+        label = `${nameA} adalah ${ (descTerms[gapA]||('generasi ke-'+gapA)).toLowerCase() } dari ${nameB}.`;
+      } else if(gapA === 1 && gapB === 1){
+        label = `${nameA} dan ${nameB} adalah saudara kandung/tiri, sama-sama anak dari ${commonName}.`;
+      } else {
+        const degree = Math.min(gapA, gapB) - 1;
+        const diff = Math.abs(gapA - gapB);
+        const degreeNames = ['pertama (misan)','kedua (mindoan)','ketiga','keempat'];
+        const degLabel = degreeNames[degree-1] || (degree+'');
+        let diffLabel = '';
+        if(diff === 1) diffLabel = ', beda satu generasi (turunan)';
+        else if(diff > 1) diffLabel = `, beda ${diff} generasi`;
+        label = `${nameA} dan ${nameB} adalah sepupu ${degLabel}${diffLabel}, dengan leluhur bersama ${commonName}.`;
+      }
+    } else {
+      label = 'Kemungkinan terhubung melalui pernikahan (bukan hubungan darah langsung).';
+    }
+    return { text: label, path, common };
+  }
+
+  function relLabelForEdge(fromId, toId){
+    const f = people[fromId], t = people[toId];
+    if(!f || !t) return '';
+    if(t.fatherId === fromId || t.motherId === fromId) return 'orang tua dari';
+    if(f.fatherId === toId || f.motherId === toId) return 'anak dari';
+    if(f.spouseIds.includes(toId)) return 'menikah dengan';
+    return '';
+  }
+
+  // ---------- Rendering ----------
+  function el(tag, attrs, children){
+    const e = document.createElement(tag);
+    if(attrs) Object.entries(attrs).forEach(([k,v])=>{
+      if(k === 'html') e.innerHTML = v; else if(k==='onClick') e.addEventListener('click', v);
+      else if(k==='onChange') e.addEventListener('change', v);
+      else e.setAttribute(k, v);
+    });
+    (children||[]).forEach(c=> e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+    return e;
+  }
+
+  let state = { tab: 'tambah', focusId: null, relA: null, relB: null, lastNotice: null, editId: null, netSelA: null, netSelB: null, netCenterTarget: null,
+    treeView: {scale:1,x:0,y:0}, netView: {scale:1,x:0,y:0}, daftarSearch: '' };
+
+  function personOptions(filterGender){
+    return Object.values(people)
+      .filter(p => !filterGender || p.gender === filterGender)
+      .sort((a,b)=> displayName(a).localeCompare(displayName(b)));
+  }
+
+  function render(){
+    const ae = document.activeElement;
+    let focusMemory = null;
+    if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && ae.id){
+      focusMemory = { id: ae.id, selStart: ae.selectionStart, selEnd: ae.selectionEnd };
+    }
+
+    root.innerHTML = '';
+    const wrap = el('div', {class:'sk-wrap'});
+    wrap.appendChild(renderSidebar());
+    wrap.appendChild(renderMain());
+    root.appendChild(wrap);
+
+    if(focusMemory){
+      const target = document.getElementById(focusMemory.id);
+      if(target){
+        target.focus();
+        try{ target.setSelectionRange(focusMemory.selStart, focusMemory.selEnd); }catch(e){}
+      }
+    }
+  }
+
+  function renderSidebar(){
+    const side = el('div', {class:'sk-side'});
+    side.appendChild(el('div', {class:'sk-brand'}, ['Silsilah Keluarga']));
+    side.appendChild(el('div', {class:'sk-brand-sub'}, ['Buku Catatan Keturunan']));
+
+    const tabs = el('div', {class:'sk-tabs'});
+    [['tambah', state.editId ? '✎ Edit' : '+ Tambah'],['pohon','Pohon'],['jaringan','🕸 Jaringan'],['hubungan','Hubungan'],['daftar','Daftar']].forEach(([key,lbl])=>{
+      const btn = el('button', {class:'sk-tab' + (state.tab===key?' active':'')}, [lbl]);
+      btn.addEventListener('click', ()=>{
+        if(key === 'tambah' && state.tab !== 'tambah') { /* keep editId if coming back to same edit */ }
+        if(key !== 'tambah') state.editId = null;
+        state.tab = key;
+        render();
+      });
+      tabs.appendChild(btn);
+    });
+    side.appendChild(tabs);
+
+    if(Object.keys(people).length === 0){
+      const demoBtn = el('button', {class:'sk-btn secondary', style:'margin-bottom:16px;'}, ['📋 Muat Contoh Data']);
+      demoBtn.addEventListener('click', async ()=>{
+        await seedDemoData();
+        state.tab = 'jaringan';
+        render();
+      });
+      side.appendChild(demoBtn);
+    }
+
+    if(state.tab === 'tambah'){
+      side.appendChild(renderAddForm());
+    } else {
+      side.appendChild(el('div', {style:'font-size:13px;color:var(--ink-soft);line-height:1.6;'}, [
+        'Gunakan tab "+ Tambah" di kiri untuk mencatat orang baru, atau klik "✎ Edit" pada seseorang di tab Daftar untuk melengkapi datanya belakangan.'
+      ]));
+    }
+
+    side.appendChild(el('div', {style:'border-top:1px solid var(--line);margin-top:20px;padding-top:16px;'}, [
+      el('div', {style:'font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;'}, ['Cadangan Data']),
+      (()=>{
+        const exportBtn = el('button', {class:'sk-btn secondary', style:'margin-bottom:8px;'}, ['💾 Ekspor Data (Backup)']);
+        exportBtn.addEventListener('click', ()=>{
+          if(Object.keys(people).length === 0){ alert('Belum ada data untuk diekspor.'); return; }
+          const blob = new Blob([JSON.stringify(people, null, 2)], {type:'application/json'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          const today = new Date().toISOString().slice(0,10);
+          a.href = url; a.download = `silsilah-backup-${today}.json`;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+        return exportBtn;
+      })(),
+      (()=>{
+        const importInput = el('input', {type:'file', accept:'application/json,.json', style:'display:none;'});
+        importInput.addEventListener('change', async (e)=>{
+          const file = e.target.files[0];
+          if(!file) return;
+          try{
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            if(typeof parsed !== 'object' || parsed === null) throw new Error('format tidak sesuai');
+            if(Object.keys(people).length > 0){
+              if(!window.confirm('Ini akan MENGGANTI seluruh data yang ada saat ini dengan isi file backup. Lanjutkan?')) return;
+            }
+            people = parsed;
+            await saveData();
+            state.tab = 'daftar';
+            state.lastNotice = 'Data berhasil dipulihkan dari file backup.';
+            render();
+          }catch(err){ alert('Gagal membaca file backup. Pastikan file yang dipilih adalah hasil Ekspor dari aplikasi ini.'); }
+        });
+        const importBtn = el('button', {class:'sk-btn secondary'}, ['📥 Impor Data (Pulihkan)']);
+        importBtn.addEventListener('click', ()=> importInput.click());
+        const wrap = el('div', {}, [importBtn, importInput]);
+        return wrap;
+      })(),
+      el('div', {style:'font-size:11px;color:var(--ink-soft);margin-top:8px;line-height:1.5;'}, ['Simpan file backup ke Google Drive atau penyimpanan lain secara berkala. Kalau membuka aplikasi ini di perangkat/salinan lain, gunakan "Impor Data" untuk memuat data yang sama.'])
+    ]));
+
+    return side;
+  }
+
+  function renderAddForm(){
+    const form = el('div', {});
+    const existing = state.editId ? people[state.editId] : null;
+    const genderState = { value: existing ? existing.gender : 'L' };
+
+    if(existing){
+      const cancelLink = el('button', {class:'sk-btn secondary', style:'margin-bottom:14px;'}, ['+ Catat Orang Baru (bukan edit)']);
+      cancelLink.addEventListener('click', ()=>{ state.editId = null; render(); });
+      form.appendChild(cancelLink);
+      form.appendChild(el('div', {style:'font-size:12px;color:var(--brass);margin-bottom:10px;'}, [`Mengedit: ${displayName(existing)}`]));
+
+      const deleteBtn = el('button', {class:'sk-btn', style:'background:var(--danger);margin-bottom:18px;'}, ['🗑 Hapus Orang Ini']);
+      deleteBtn.addEventListener('click', async ()=>{
+        const childCount = existing.childrenIds.length;
+        const warn = childCount
+          ? `Hapus "${displayName(existing)}"? Ia punya ${childCount} anak tercatat — anak-anaknya TIDAK ikut terhapus, hanya sambungan ke orang tua ini yang dilepas. Lanjutkan?`
+          : `Hapus "${displayName(existing)}" dari silsilah? Tindakan ini tidak bisa dibatalkan.`;
+        if(!window.confirm(warn)) return;
+        deletePerson(existing.id);
+        await saveData();
+        state.editId = null;
+        if(state.focusId === existing.id) state.focusId = null;
+        if(state.netSelA === existing.id) state.netSelA = null;
+        if(state.netSelB === existing.id) state.netSelB = null;
+        state.lastNotice = `"${displayName(existing)}" sudah dihapus dari silsilah.`;
+        state.tab = 'daftar';
+        render();
+      });
+      form.appendChild(deleteBtn);
+    }
+
+    const nameField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Nama Lengkap (opsional jika alias diisi)']),
+      el('input', {type:'text', id:'sk-name', placeholder:'cth. Suryadi', value: existing ? existing.name : ''})
+    ]);
+
+    const aliasField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Nama Alias / Panggilan (opsional jika nama lengkap diisi)']),
+      el('input', {type:'text', id:'sk-alias', placeholder:'cth. Mbah Yadi, Pak Dhe Ndut', value: existing ? existing.alias : ''})
+    ]);
+
+    const genderRow = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Jenis Kelamin']),
+      el('div', {class:'sk-radio-row'}, [
+        el('label', {}, [ (()=>{const i=el('input',{type:'radio',name:'sk-gender'}); if(genderState.value==='L') i.checked=true; i.addEventListener('change',()=>{genderState.value='L';});return i;})(), el('span',{},['Laki-laki'])]),
+        el('label', {}, [ (()=>{const i=el('input',{type:'radio',name:'sk-gender'}); if(genderState.value==='P') i.checked=true; i.addEventListener('change',()=>{genderState.value='P';});return i;})(), el('span',{},['Perempuan'])])
+      ])
+    ]);
+
+    const photoState = { value: existing ? existing.photo : '', dirty: false };
+    const previewWrap = el('div', {style:'display:flex;align-items:center;gap:10px;margin-top:6px;'});
+    function renderPreview(){
+      previewWrap.innerHTML = '';
+      const previewPerson = { photo: photoState.value, gender: genderState.value, name: 'x', alias:'' };
+      previewWrap.appendChild(avatarEl(previewPerson, 48));
+      const fileInput = el('input', {type:'file', accept:'image/*', id:'sk-photo-input', style:'font-size:12px;max-width:180px;'});
+      fileInput.addEventListener('change', async (e)=>{
+        const file = e.target.files[0];
+        if(!file) return;
+        try{
+          photoState.value = await compressPhotoFile(file);
+          photoState.dirty = true;
+          renderPreview();
+        }catch(err){ alert('Gagal memuat foto. Coba foto lain.'); }
+      });
+      const col = el('div', {}, [fileInput]);
+      if(photoState.value){
+        const removeBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:4px 10px;margin-top:6px;font-size:12px;'}, ['Hapus Foto']);
+        removeBtn.addEventListener('click', ()=>{ photoState.value=''; photoState.dirty=true; renderPreview(); });
+        col.appendChild(removeBtn);
+      }
+      previewWrap.appendChild(col);
+    }
+    renderPreview();
+    const photoField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Foto Profil (opsional)']),
+      previewWrap,
+      el('div', {style:'font-size:11px;color:var(--ink-soft);margin-top:4px;'}, ['Foto otomatis dikecilkan agar hemat penyimpanan.'])
+    ]);
+
+    const dayOptions = ['']; for(let i=1;i<=31;i++) dayOptions.push(String(i));
+    const monthNames = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const daySel = el('select', {id:'sk-day', style:'width:70px;'}, dayOptions.map(d=>el('option',{value:d},[d||'Tgl'])));
+    if(existing) daySel.value = existing.birthDay || '';
+    const monthSel = el('select', {id:'sk-month', style:'flex:1;'}, monthNames.map((m,i)=>el('option',{value:i?String(i):''},[i?m:'Bulan'])));
+    if(existing) monthSel.value = existing.birthMonth || '';
+    const yearInput = el('input', {type:'text', id:'sk-birth', placeholder:'Tahun', style:'width:80px;', value: existing ? existing.birthYear : ''});
+    const birthField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Tanggal Lahir (opsional, bisa dilengkapi belakangan)']),
+      el('div', {style:'display:flex;gap:6px;'}, [daySel, monthSel, yearInput])
+    ]);
+
+    function comboField(labelText, id, listSourceGender, prefillName){
+      const listId = id + '-list';
+      const datalist = el('datalist', {id: listId});
+      personOptions(listSourceGender).forEach(p=>{
+        if(p.name) datalist.appendChild(el('option', {value: p.name}));
+        if(p.alias) datalist.appendChild(el('option', {value: p.alias}));
+      });
+      const input = el('input', {type:'text', id, list: listId, placeholder: 'Ketik nama — baru atau yang sudah ada', value: prefillName || ''});
+      return el('div', {class:'sk-field'}, [ el('label', {}, [labelText + ' (opsional, bisa dilengkapi belakangan)']), input, datalist ]);
+    }
+
+    const fatherField = comboField('Ayah', 'sk-father', 'L', existing && existing.fatherId ? displayName(people[existing.fatherId]) : '');
+    const motherField = comboField('Ibu', 'sk-mother', 'P', existing && existing.motherId ? displayName(people[existing.motherId]) : '');
+    const spouseField = comboField('Suami / Istri', 'sk-spouse', null, existing && existing.spouseIds.length ? displayName(people[existing.spouseIds[0]]) : '');
+    if(existing && existing.spouseIds.length){
+      spouseField.appendChild(el('div', {style:'font-size:11px;color:var(--ink-soft);margin-top:4px;'}, [`Sudah tercatat: ${existing.spouseIds.map(sid=>displayName(people[sid])).join(', ')}. Isi nama lain untuk menambah pasangan baru.`]));
+    }
+
+    const childrenField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Tambah Nama Anak (opsional, pisahkan dengan koma)']),
+      el('input', {type:'text', id:'sk-children', placeholder:'cth. Ali (L), Siti (P)'}),
+      el('div', {style:'font-size:11px;color:var(--ink-soft);margin-top:4px;'}, ['Tambahkan (L) atau (P) di belakang nama untuk menandai jenis kelamin anak.'])
+    ]);
+
+    const addressField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Alamat (opsional)']),
+      el('input', {type:'text', id:'sk-address', placeholder:'cth. Desa Sukamaju, Cianjur', value: existing ? existing.address : ''})
+    ]);
+    const contactField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['No. Kontak (opsional)']),
+      el('input', {type:'text', id:'sk-contact', placeholder:'cth. 0812xxxxxxx', value: existing ? existing.contact : ''})
+    ]);
+    const jobField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Pekerjaan (opsional)']),
+      el('input', {type:'text', id:'sk-job', placeholder:'cth. Petani, Guru', value: existing ? existing.job : ''})
+    ]);
+
+    const deceasedState = { value: existing ? existing.isDeceased : false };
+    const deathDateWrap = el('div', {style:'display:flex;gap:6px;margin-top:8px;' + (deceasedState.value ? '' : 'display:none;')});
+    const dDaySel = el('select', {id:'sk-death-day', style:'width:70px;'}, dayOptions.map(d=>el('option',{value:d},[d||'Tgl'])));
+    if(existing) dDaySel.value = existing.deathDay || '';
+    const dMonthSel = el('select', {id:'sk-death-month', style:'flex:1;'}, monthNames.map((m,i)=>el('option',{value:i?String(i):''},[i?m:'Bulan'])));
+    if(existing) dMonthSel.value = existing.deathMonth || '';
+    const dYearInput = el('input', {type:'text', id:'sk-death-year', placeholder:'Tahun', style:'width:80px;', value: existing ? existing.deathYear : ''});
+    deathDateWrap.appendChild(dDaySel); deathDateWrap.appendChild(dMonthSel); deathDateWrap.appendChild(dYearInput);
+
+    const statusField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Status']),
+      el('div', {class:'sk-radio-row'}, [
+        el('label', {}, [ (()=>{const i=el('input',{type:'radio',name:'sk-status'}); if(!deceasedState.value) i.checked=true; i.addEventListener('change',()=>{deceasedState.value=false; deathDateWrap.style.display='none';});return i;})(), el('span',{},['Masih Hidup'])]),
+        el('label', {}, [ (()=>{const i=el('input',{type:'radio',name:'sk-status'}); if(deceasedState.value) i.checked=true; i.addEventListener('change',()=>{deceasedState.value=true; deathDateWrap.style.display='flex';});return i;})(), el('span',{},['Almarhum/ah'])])
+      ]),
+      el('div', {style:'font-size:11px;color:var(--ink-soft);margin-top:4px;'}, ['Tanggal wafat (opsional):']),
+      deathDateWrap
+    ]);
+
+    const notesField = el('div', {class:'sk-field'}, [
+      el('label', {}, ['Keterangan / Catatan (opsional)']),
+      el('textarea', {id:'sk-notes', rows:'3', style:'width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:14px;color:var(--ink);font-family:inherit;resize:vertical;', placeholder:'cth. Perantau ke Sumatra tahun 1965, dikenal sebagai tokoh kampung...'}, [existing ? existing.notes : ''])
+    ]);
+
+    const submitBtn = el('button', {class:'sk-btn'}, [existing ? 'Simpan Perubahan' : 'Simpan & Hubungkan']);
+    submitBtn.addEventListener('click', async ()=>{
+      const name = document.getElementById('sk-name').value.trim();
+      const alias = document.getElementById('sk-alias').value.trim();
+      if(!name && !alias){ alert('Isi minimal salah satu: Nama Lengkap atau Nama Alias.'); return; }
+      const birthDay = document.getElementById('sk-day').value;
+      const birthMonth = document.getElementById('sk-month').value;
+      const birthYear = document.getElementById('sk-birth').value.trim();
+      const address = document.getElementById('sk-address').value.trim();
+      const contact = document.getElementById('sk-contact').value.trim();
+      const job = document.getElementById('sk-job').value.trim();
+      const isDeceased = deceasedState.value;
+      const deathDay = document.getElementById('sk-death-day').value;
+      const deathMonth = document.getElementById('sk-death-month').value;
+      const deathYear = document.getElementById('sk-death-year').value.trim();
+      const notes = document.getElementById('sk-notes').value.trim();
+
+      const fatherInput = document.getElementById('sk-father').value.trim();
+      const motherInput = document.getElementById('sk-mother').value.trim();
+      const spouseInput = document.getElementById('sk-spouse').value.trim();
+      const childrenInput = document.getElementById('sk-children').value.trim();
+
+      const father = resolveOrCreatePerson(fatherInput, 'L', existing ? existing.fatherId : null);
+      const mother = resolveOrCreatePerson(motherInput, 'P', existing ? existing.motherId : null);
+
+      let id, matches = [];
+      const basics = {name, alias, gender: genderState.value, photo: photoState.value, birthDay, birthMonth, birthYear, address, contact, job, isDeceased, deathDay, deathMonth, deathYear, notes};
+
+      if(existing){
+        id = existing.id;
+        updatePersonBasics(id, basics);
+        if((father ? father.id : null) !== existing.fatherId){
+          unlinkChildFromParent(id, existing.fatherId);
+          existing.fatherId = father ? father.id : null;
+          linkChildToParent(id, existing.fatherId);
+        }
+        if((mother ? mother.id : null) !== existing.motherId){
+          unlinkChildFromParent(id, existing.motherId);
+          existing.motherId = mother ? mother.id : null;
+          linkChildToParent(id, existing.motherId);
+        }
+      } else {
+        matches = detectPossibleMatches(name || alias, null);
+        id = addPerson({...basics, fatherId: father ? father.id : null, motherId: mother ? mother.id : null});
+      }
+
+      const spouse = resolveOrCreatePerson(spouseInput, genderState.value === 'L' ? 'P' : 'L', existing && existing.spouseIds.length ? existing.spouseIds[0] : null);
+      if(spouse) linkSpouses(id, spouse.id);
+
+      const createdChildren = [];
+      if(childrenInput){
+        const thisFatherId = genderState.value === 'L' ? id : (spouse ? spouse.id : null);
+        const thisMotherId = genderState.value === 'P' ? id : (spouse ? spouse.id : null);
+        childrenInput.split(',').map(s=>s.trim()).filter(Boolean).forEach(rawChild=>{
+          const child = resolveOrCreatePerson(rawChild, 'L');
+          if(!child) return;
+          linkChildBothWays(child.id, thisFatherId, thisMotherId);
+          createdChildren.push(displayName(people[child.id]));
+        });
+      }
+
+      await saveData();
+
+      const noticeParts = [];
+      const shownName = displayName(people[id]);
+      if(existing){
+        noticeParts.push(`Data "${shownName}" berhasil diperbarui.`);
+      } else if(matches.length){
+        noticeParts.push(`Nama "${shownName}" mirip dengan yang sudah tercatat sebelumnya (${matches.map(m=>displayName(m)).join(', ')}) — cek tab "Hubungan" untuk memastikan orang yang sama atau bukan.`);
+      } else {
+        noticeParts.push(`"${shownName}" berhasil ditambahkan dan terhubung ke silsilah.`);
+      }
+      if(father && father.isNew) noticeParts.push(`Ayah "${displayName(people[father.id])}" otomatis dibuat baru.`);
+      if(mother && mother.isNew) noticeParts.push(`Ibu "${displayName(people[mother.id])}" otomatis dibuat baru.`);
+      if(spouse && spouse.isNew) noticeParts.push(`Pasangan "${displayName(people[spouse.id])}" otomatis dibuat baru.`);
+      if(createdChildren.length) noticeParts.push(`Anak tersambung: ${createdChildren.join(', ')}.`);
+      state.lastNotice = noticeParts.join(' ');
+      state.editId = null;
+      state.tab = 'daftar';
+      render();
+    });
+
+    [nameField, aliasField, photoField, genderRow, birthField, statusField, fatherField, motherField, spouseField, childrenField, addressField, contactField, jobField, notesField, submitBtn].forEach(f=>form.appendChild(f));
+    return form;
+  }
+
+  function renderMain(){
+    const main = el('div', {class:'sk-main'});
+
+    if(state.lastNotice){
+      main.appendChild(el('div', {class:'sk-banner'}, [
+        el('span',{class:'icon'},['🔗']),
+        el('span',{},[state.lastNotice])
+      ]));
+    }
+
+    if(Object.keys(people).length === 0 && state.tab !== 'tambah'){
+      main.appendChild(el('div', {class:'sk-empty'}, [
+        el('div',{class:'glyph'},['🌳']),
+        el('div',{},['Belum ada data. Mulai dari tab "+ Tambah" di sebelah kiri.'])
+      ]));
+      return main;
+    }
+
+    if(state.tab === 'pohon') main.appendChild(renderPohon());
+    else if(state.tab === 'jaringan') main.appendChild(renderJaringan());
+    else if(state.tab === 'hubungan') main.appendChild(renderHubungan());
+    else if(state.tab === 'daftar') main.appendChild(renderDaftar());
+    else main.appendChild(renderDaftar());
+
+    return main;
+  }
+
+  function renderDaftar(){
+    const wrap = el('div', {});
+    wrap.appendChild(el('div', {class:'sk-section-title'}, ['📖 Daftar Semua Orang']));
+    if(Object.keys(people).length === 0){
+      wrap.appendChild(el('div',{class:'sk-empty'},['Belum ada orang yang dicatat.']));
+      return wrap;
+    }
+    const searchInput = el('input', {type:'text', id:'sk-search-daftar', placeholder:'🔍 Cari nama atau alias...', value: state.daftarSearch,
+      style:'width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:14px;font-family:inherit;margin-bottom:14px;'});
+    searchInput.addEventListener('input', (e)=>{ state.daftarSearch = e.target.value; render(); });
+    wrap.appendChild(searchInput);
+
+    const q = normalizeName(state.daftarSearch);
+    const allPeople = Object.values(people).sort((a,b)=>displayName(a).localeCompare(displayName(b)));
+    const filtered = q ? allPeople.filter(p => normalizeName(p.name).includes(q) || normalizeName(p.alias).includes(q)) : allPeople;
+
+    if(q){
+      wrap.appendChild(el('div', {style:'font-size:12px;color:var(--ink-soft);margin-bottom:10px;'}, [`${filtered.length} dari ${allPeople.length} orang cocok dengan "${state.daftarSearch}"`]));
+      if(filtered.length > 1){
+        wrap.appendChild(el('div', {style:'font-size:12px;color:var(--danger);margin-bottom:10px;'}, ['⚠ Ada lebih dari satu orang dengan nama mirip — periksa apakah ini data ganda yang tidak sengaja terbuat terpisah.']));
+      }
+    }
+
+    const list = el('div', {});
+    filtered.forEach(p=>{
+      const bd = formatBirth(p);
+      const dd = formatDeath(p);
+      const label = displayName(p);
+      const aliasLabel = (p.name && p.alias) ? ` alias ${p.alias}` : '';
+      const deceasedLabel = p.isDeceased ? ` ☪ (wafat${dd ? ' ' + dd : ''})` : '';
+      const subtitleParts = [p.job, p.address].filter(Boolean);
+      const nameCol = el('div', {}, [
+        el('div', {}, [label + aliasLabel + (bd ? ` (lahir ${bd})` : '') + deceasedLabel])
+      ]);
+      if(subtitleParts.length) nameCol.appendChild(el('div', {style:'font-size:11.5px;color:var(--ink-soft);margin-top:2px;'}, [subtitleParts.join(' · ')]));
+      const item = el('div', {class:'sk-list-item'}, [
+        el('div', {style:'display:flex;align-items:center;gap:10px;'}, [avatarEl(p, 34), nameCol]),
+        el('span', {style:'display:flex;gap:8px;align-items:center;'}, [
+          el('span', {class:'sk-tag ' + (p.gender==='L'?'L':'P')}, [p.gender==='L'?'Laki-laki':'Perempuan']),
+          (()=>{ const b = el('button', {class:'sk-btn secondary', style:'width:auto;padding:4px 10px;margin:0;font-size:12px;'}, ['✎ Edit']);
+                 b.addEventListener('click', (e)=>{ e.stopPropagation(); state.editId = p.id; state.tab = 'tambah'; render(); });
+                 return b; })()
+        ])
+      ]);
+      item.addEventListener('click', ()=>{ state.tab='pohon'; state.focusId = p.id; render(); });
+      list.appendChild(item);
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  function renderHubungan(){
+    const wrap = el('div', {});
+    wrap.appendChild(el('div', {class:'sk-section-title'}, ['🔍 Cari Hubungan Kekerabatan']));
+    const opts = Object.values(people).sort((a,b)=>a.name.localeCompare(b.name));
+
+    const selA = el('select', {}, opts.map(p=>el('option',{value:p.id},[displayName(p)])));
+    const selB = el('select', {}, opts.map(p=>el('option',{value:p.id},[displayName(p)])));
+    if(opts.length>1) selB.selectedIndex = 1;
+    selA.addEventListener('change', e=>{ state.relA = e.target.value; render(); });
+    selB.addEventListener('change', e=>{ state.relB = e.target.value; render(); });
+
+    const row = el('div', {class:'sk-search-row'}, [selA, el('span',{style:'align-self:center;color:var(--brass);'},['↔']), selB]);
+    wrap.appendChild(row);
+
+    const idA = state.relA || (opts[0] && opts[0].id);
+    const idB = state.relB || (opts[1] && opts[1].id);
+    selA.value = idA; selB.value = idB;
+
+    if(idA && idB && idA !== idB){
+      const result = describeRelation(idA, idB);
+      const resWrap = el('div', {class:'sk-relation-result'});
+      resWrap.appendChild(el('div', {class:'sk-relation-title'}, ['Hasil']));
+      resWrap.appendChild(el('div', {style:'margin-bottom:12px;font-size:14.5px;'}, [result.text]));
+      if(result.path){
+        const chain = el('div', {class:'sk-chain'});
+        result.path.forEach((pid, i)=>{
+          chain.appendChild(el('span',{class:'node'},[displayName(people[pid])]));
+          if(i < result.path.length-1){
+            const label = relLabelForEdge(pid, result.path[i+1]);
+            chain.appendChild(el('span',{class:'arrow'},[' → ' + (label?('('+label+') '):'') ]));
+          }
+        });
+        resWrap.appendChild(chain);
+      }
+      const openBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin-top:14px;font-size:12.5px;'}, ['📄 Buka & Unduh Hasil Ini']);
+      openBtn.addEventListener('click', ()=>{
+        let html = `<h2>Hubungan Kekerabatan</h2><p style="font-size:14px;">${escapeXml(result.text)}</p>`;
+        if(result.path){
+          html += `<h2>Jalur Penghubung</h2><ul>`;
+          result.path.forEach((pid, i)=>{
+            let line = escapeXml(displayName(people[pid]));
+            if(i < result.path.length-1){
+              const label = relLabelForEdge(pid, result.path[i+1]);
+              line += label ? ` — (${escapeXml(label)})` : '';
+            }
+            html += `<li>${line}</li>`;
+          });
+          html += `</ul>`;
+        }
+        openPrintDoc(`Hubungan — ${displayName(people[idA])} & ${displayName(people[idB])}`, html);
+      });
+      resWrap.appendChild(openBtn);
+      wrap.appendChild(resWrap);
+    }
+    return wrap;
+  }
+
+  // ---- Tree (pohon) rendering ----
+  function renderPohon(){
+    const wrap = el('div', {});
+    wrap.appendChild(el('div', {class:'sk-section-title'}, ['🌳 Pohon Silsilah']));
+
+    const opts = Object.values(people).sort((a,b)=>displayName(a).localeCompare(displayName(b)));
+    if(!state.focusId && opts.length) state.focusId = opts[0].id;
+    const focusRow = el('div', {style:'display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;'});
+    const focusSel = el('select', {class:'sk-focus-select', style:'width:280px;padding:9px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-family:inherit;margin-bottom:0;'},
+      opts.map(p=>el('option',{value:p.id},[displayName(p)])));
+    focusSel.value = state.focusId;
+    focusSel.addEventListener('change', e=>{ state.focusId = e.target.value; render(); });
+    focusRow.appendChild(focusSel);
+    if(state.focusId){
+      const editBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;'}, ['✎ Lengkapi / Edit Data']);
+      editBtn.addEventListener('click', ()=>{ state.editId = state.focusId; state.tab='tambah'; render(); });
+      focusRow.appendChild(editBtn);
+
+      const pdfDiriBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;'}, ['🖨 PDF Data Diri']);
+      pdfDiriBtn.addEventListener('click', ()=>{
+        const p = people[state.focusId];
+        openPrintDoc(`Data Diri — ${displayName(p)}`, buildDataDiriHtml(state.focusId));
+      });
+      focusRow.appendChild(pdfDiriBtn);
+
+      const pdfKecilBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;'}, ['🖨 PDF Keluarga Kecil']);
+      pdfKecilBtn.addEventListener('click', ()=>{
+        const p = people[state.focusId];
+        openPrintDoc(`Keluarga Kecil — ${displayName(p)}`, buildKeluargaKecilHtml(state.focusId));
+      });
+      focusRow.appendChild(pdfKecilBtn);
+
+      const pdfBesarBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;'}, ['🖨 PDF Keluarga Besar']);
+      pdfBesarBtn.addEventListener('click', ()=>{
+        const p = people[state.focusId];
+        openPrintDoc(`Keluarga Besar — ${displayName(p)} dan Keturunannya`, buildKeluargaBesarHtml(state.focusId));
+      });
+      focusRow.appendChild(pdfBesarBtn);
+    }
+    wrap.appendChild(focusRow);
+    wrap.appendChild(el('div', {style:'font-size:11.5px;color:var(--ink-soft);margin-top:-10px;margin-bottom:16px;'}, ['"Data Diri" = biodata orang ini saja. "Keluarga Kecil" = diri sendiri, orang tua, pasangan, anak. "Keluarga Besar" = orang yang dipilih di atas beserta SEMUA keturunannya (anak, cucu, cicit, dst).']));
+
+    if(!state.focusId) return wrap;
+    wrap.appendChild(buildDetailCard(state.focusId));
+    wrap.appendChild(el('div', {style:'font-family:Georgia,serif;font-size:15px;color:var(--indigo);margin:20px 0 10px;'}, ['🌳 Peta Pohon']));
+    const descIds = collectDescendantIds(state.focusId);
+    const stats = genderStats(descIds);
+    wrap.appendChild(el('div', {style:'display:flex;gap:16px;background:#f2ead9;border:1px solid var(--line);border-radius:8px;padding:9px 16px;margin-bottom:14px;font-size:13px;'}, [
+      el('span', {}, [`👨 ${stats.L} Laki-laki`]),
+      el('span', {}, [`👩 ${stats.P} Perempuan`]),
+      el('span', {}, [`Σ ${stats.total} Total keturunan dari sini`])
+    ]));
+    wrap.appendChild(buildTreeSVG(state.focusId));
+    return wrap;
+  }
+
+  function buildDetailCard(id){
+    const p = people[id];
+    const card = el('div', {style:'margin-top:18px;border:1px solid var(--line);border-radius:10px;background:#fffdf8;padding:18px 20px;'});
+    card.appendChild(el('div', {style:'font-family:Georgia,serif;font-size:16px;color:var(--indigo);margin-bottom:14px;'}, ['📋 Data Lengkap']));
+
+    const header = el('div', {style:'display:flex;gap:14px;align-items:center;margin-bottom:16px;'});
+    header.appendChild(avatarEl(p, 64));
+    const headText = el('div', {}, [
+      el('div', {style:'font-size:17px;font-weight:700;color:var(--ink);'}, [displayName(p) + (p.isDeceased ? ' ☪' : '')]),
+    ]);
+    if(p.name && p.alias) headText.appendChild(el('div', {style:'font-size:13px;color:var(--brass);'}, [`alias ${p.alias}`]));
+    const bd = formatBirth(p), dd = formatDeath(p);
+    const statusLine = [
+      p.gender==='L' ? 'Laki-laki' : 'Perempuan',
+      bd ? `lahir ${bd}` : null,
+      p.isDeceased ? `wafat ${dd || '(tanggal tidak diketahui)'}` : 'masih hidup'
+    ].filter(Boolean).join(' · ');
+    headText.appendChild(el('div', {style:'font-size:13px;color:var(--ink-soft);margin-top:2px;'}, [statusLine]));
+    header.appendChild(headText);
+    card.appendChild(header);
+
+    function row(label, valueNode){
+      const r = el('div', {style:'display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13.5px;'});
+      r.appendChild(el('div', {style:'width:110px;flex-shrink:0;color:var(--ink-soft);'}, [label]));
+      r.appendChild(el('div', {style:'flex:1;'}, [valueNode]));
+      return r;
+    }
+    function linkTo(targetId, text){
+      const a = el('span', {style:'color:var(--indigo);text-decoration:underline;cursor:pointer;'}, [text]);
+      a.addEventListener('click', ()=>{ state.focusId = targetId; render(); });
+      return a;
+    }
+
+    if(p.address) card.appendChild(row('Alamat', p.address));
+    if(p.job) card.appendChild(row('Pekerjaan', p.job));
+    if(p.contact) card.appendChild(row('No. Kontak', p.contact));
+
+    if(p.fatherId || p.motherId){
+      const box = el('div', {});
+      if(p.fatherId) box.appendChild(el('div', {}, [linkTo(p.fatherId, displayName(people[p.fatherId])), ' (Ayah)']));
+      if(p.motherId) box.appendChild(el('div', {}, [linkTo(p.motherId, displayName(people[p.motherId])), ' (Ibu)']));
+      card.appendChild(row('Orang Tua', box));
+    }
+    if(p.spouseIds.length){
+      const box = el('div', {});
+      p.spouseIds.forEach(sid => box.appendChild(el('div', {}, [linkTo(sid, displayName(people[sid]))])));
+      card.appendChild(row('Pasangan', box));
+    }
+    if(p.childrenIds.length){
+      const box = el('div', {});
+      p.childrenIds.forEach(cid => box.appendChild(el('div', {}, [linkTo(cid, displayName(people[cid]))])));
+      card.appendChild(row(`Anak (${p.childrenIds.length})`, box));
+    }
+    if(p.notes) card.appendChild(row('Keterangan', p.notes));
+
+    const btnRow = el('div', {style:'display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;'});
+    const editBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin:0;font-size:12.5px;'}, ['✎ Edit Data Ini']);
+    editBtn.addEventListener('click', ()=>{ state.editId = id; state.tab='tambah'; render(); });
+    btnRow.appendChild(editBtn);
+
+    const pdfDiriBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:7px 14px;margin:0;font-size:12.5px;'}, ['🖨 PDF Data Diri']);
+    pdfDiriBtn.addEventListener('click', ()=>{
+      openPrintDoc(`Data Diri — ${displayName(p)}`, buildDataDiriHtml(id));
+    });
+    btnRow.appendChild(pdfDiriBtn);
+    card.appendChild(btnRow);
+
+    return card;
+  }
+
+  function buildZoomShell(svgHtml, viewState, heightPx, contentW, contentH){
+    const shell = el('div', {style:'border:1px solid var(--line);border-radius:10px;background:#fffdf8;overflow:hidden;'});
+    const controls = el('div', {style:'display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--line);align-items:center;flex-wrap:wrap;'});
+    const zoomOutBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:4px 13px;margin:0;font-size:16px;'}, ['−']);
+    const zoomLabel = el('span', {style:'font-size:12px;color:var(--ink-soft);min-width:42px;text-align:center;'}, [Math.round(viewState.scale*100)+'%']);
+    const zoomInBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:4px 13px;margin:0;font-size:16px;'}, ['+']);
+    const resetBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:4px 12px;margin:0;font-size:12px;'}, ['🔳 Tampilkan Semua']);
+    controls.appendChild(zoomOutBtn); controls.appendChild(zoomLabel); controls.appendChild(zoomInBtn); controls.appendChild(resetBtn);
+    controls.appendChild(el('span', {style:'font-size:11px;color:var(--ink-soft);margin-left:auto;'}, ['Seret untuk geser · scroll untuk zoom']));
+    shell.appendChild(controls);
+
+    const viewport = el('div', {style:`overflow:hidden;cursor:grab;height:${heightPx}px;touch-action:none;position:relative;`});
+    const inner = el('div', {style:'transform-origin:0 0;width:fit-content;'});
+    inner.innerHTML = svgHtml;
+    viewport.appendChild(inner);
+    shell.appendChild(viewport);
+
+    function applyTransform(){
+      inner.style.transform = `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`;
+      zoomLabel.textContent = Math.round(viewState.scale*100)+'%';
+    }
+    applyTransform();
+
+    function fitToView(){
+      const availW = viewport.clientWidth || 700;
+      const availH = heightPx;
+      const cw = contentW || availW, ch = contentH || availH;
+      const scale = Math.min(availW/cw, availH/ch, 1) * 0.94;
+      viewState.scale = scale;
+      viewState.x = (availW - cw*scale)/2;
+      viewState.y = (availH - ch*scale)/2;
+      applyTransform();
+    }
+
+    function centerOn(px, py, targetScale){
+      const availW = viewport.clientWidth || 700;
+      const availH = heightPx;
+      viewState.scale = targetScale || Math.max(viewState.scale, 1);
+      viewState.x = availW/2 - px*viewState.scale;
+      viewState.y = availH/2 - py*viewState.scale;
+      applyTransform();
+    }
+
+    let dragging=false, startX=0, startY=0, origX=0, origY=0, moved=false, suppressNextClick=false;
+    viewport.addEventListener('pointerdown', e=>{
+      if(e.button !== undefined && e.button !== 0) return;
+      dragging=true; moved=false; startX=e.clientX; startY=e.clientY; origX=viewState.x; origY=viewState.y;
+      viewport.style.cursor='grabbing';
+
+      const onMove = (e2)=>{
+        if(!dragging) return;
+        const dx = e2.clientX-startX, dy = e2.clientY-startY;
+        if(Math.abs(dx)>4 || Math.abs(dy)>4) moved = true;
+        viewState.x = origX + dx; viewState.y = origY + dy;
+        applyTransform();
+      };
+      const onUp = ()=>{
+        dragging=false; viewport.style.cursor='grab';
+        if(moved) suppressNextClick = true;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    });
+    // Kalau baru saja terjadi drag (geser), abaikan satu klik berikutnya supaya tidak salah pindah fokus.
+    viewport.addEventListener('click', e=>{
+      if(suppressNextClick){ e.stopPropagation(); e.preventDefault(); suppressNextClick=false; }
+    }, true);
+
+    function zoomAtPoint(newScale, screenX, screenY){
+      newScale = Math.min(3, Math.max(0.3, newScale));
+      const cx = (screenX - viewState.x) / viewState.scale;
+      const cy = (screenY - viewState.y) / viewState.scale;
+      viewState.scale = newScale;
+      viewState.x = screenX - cx * newScale;
+      viewState.y = screenY - cy * newScale;
+      applyTransform();
+    }
+
+    let lastCursor = null;
+    viewport.addEventListener('pointermove', e=>{
+      const rect = viewport.getBoundingClientRect();
+      lastCursor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    });
+    viewport.addEventListener('pointerenter', e=>{
+      const rect = viewport.getBoundingClientRect();
+      lastCursor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    });
+
+    viewport.addEventListener('wheel', e=>{
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      lastCursor = { x: px, y: py };
+      const delta = e.deltaY < 0 ? 0.12 : -0.12;
+      zoomAtPoint(viewState.scale + delta, px, py);
+    }, {passive:false});
+
+    function anchorPoint(){
+      if(lastCursor) return lastCursor;
+      return { x: viewport.clientWidth/2, y: viewport.clientHeight/2 };
+    }
+    zoomInBtn.addEventListener('click', ()=>{ const a = anchorPoint(); zoomAtPoint(viewState.scale+0.2, a.x, a.y); });
+    zoomOutBtn.addEventListener('click', ()=>{ const a = anchorPoint(); zoomAtPoint(viewState.scale-0.2, a.x, a.y); });
+    resetBtn.addEventListener('click', fitToView);
+
+    return { shell, inner, viewport, fitToView, centerOn };
+  }
+
+  function buildTreeSVG(focusId){
+    const CARD_W = 150, CARD_H = 46, GAP_X = 26, GEN_H = 100;
+    // ancestors: rows above (up to 3 gens), descendants: rows below (up to 3 gens)
+    function getAncestorsRows(id, maxGen){
+      const rows = []; // rows[0] = parents, rows[1]=grandparents...
+      let frontier = [id];
+      for(let g=0; g<maxGen; g++){
+        const nextRow = [];
+        frontier.forEach(pid=>{
+          const p = people[pid];
+          if(!p) return;
+          nextRow.push(p.fatherId ? p.fatherId : null);
+          nextRow.push(p.motherId ? p.motherId : null);
+        });
+        rows.push(nextRow);
+        frontier = nextRow.filter(Boolean);
+        if(frontier.length===0) break;
+      }
+      return rows;
+    }
+    function getDescendantRows(id, maxGen){
+      const rows = [];
+      let frontier = [id];
+      for(let g=0; g<maxGen; g++){
+        const nextRow = [];
+        frontier.forEach(pid=>{
+          const p = people[pid];
+          if(!p) return;
+          p.childrenIds.forEach(cid=> nextRow.push(cid));
+        });
+        rows.push(nextRow);
+        frontier = nextRow;
+        if(frontier.length===0) break;
+      }
+      return rows;
+    }
+
+    const ancRows = getAncestorsRows(focusId, 3).filter(r=>r.some(Boolean));
+    const descRows = getDescendantRows(focusId, 3).filter(r=>r.length);
+    const focusP = people[focusId];
+    const spouses = focusP.spouseIds;
+
+    const totalRows = ancRows.length + 1 + descRows.length;
+    const width = Math.max(700, (Math.max(...[1+spouses.length].concat(ancRows.map(r=>r.length)), ...descRows.map(r=>r.length), 1)) * (CARD_W+GAP_X) + 60);
+    const height = totalRows * GEN_H + 60;
+
+    let svgContent = '';
+    const nodePositions = {};
+
+    function drawRow(ids, rowIndexFromTop){
+      const y = rowIndexFromTop * GEN_H + 30;
+      const n = ids.length || 1;
+      const rowWidth = n * (CARD_W+GAP_X) - GAP_X;
+      const startX = (width - rowWidth)/2;
+      ids.forEach((pid, i)=>{
+        if(!pid) return;
+        const x = startX + i*(CARD_W+GAP_X);
+        nodePositions[pid] = {x: x+CARD_W/2, y: y+CARD_H/2, x0:x, y0:y};
+      });
+    }
+
+    // ancestor rows drawn top-down: farthest generation first
+    const ancTopDown = [...ancRows].reverse();
+    ancTopDown.forEach((row, idx)=> drawRow(row, idx));
+    const focusRowIndex = ancRows.length;
+    drawRow([focusId, ...spouses], focusRowIndex);
+    descRows.forEach((row, idx)=> drawRow(row, focusRowIndex+1+idx));
+
+    // draw connector lines: parent-child
+    Object.values(people).forEach(p=>{
+      [p.fatherId, p.motherId].forEach(par=>{
+        if(par && nodePositions[par] && nodePositions[p.id]){
+          const a = nodePositions[par], b = nodePositions[p.id];
+          svgContent += `<line x1="${a.x}" y1="${a.y0+CARD_H}" x2="${b.x}" y2="${b.y0}" stroke="#cbb98c" stroke-width="1.5"/>`;
+        }
+      });
+      p.spouseIds.forEach(sid=>{
+        if(nodePositions[p.id] && nodePositions[sid] && nodePositions[p.id].y === nodePositions[sid].y){
+          const a = nodePositions[p.id], b = nodePositions[sid];
+          svgContent += `<line x1="${a.x0+CARD_W}" y1="${a.y}" x2="${b.x0}" y2="${b.y}" stroke="#a9762f" stroke-width="2" stroke-dasharray="3,3"/>`;
+        }
+      });
+    });
+
+    // draw cards
+    Object.entries(nodePositions).forEach(([pid, pos])=>{
+      const p = people[pid];
+      if(!p) return;
+      const isFocus = pid === focusId;
+      const fill = isFocus ? '#253a52' : '#fffdf8';
+      const textColor = isFocus ? '#fff' : '#2c2117';
+      const stroke = p.gender==='L' ? '#7d94ab' : '#c98a94';
+      const lifespan = p.isDeceased ? `${formatBirth(p)||'?'} – ${formatDeath(p)||'☪'}` : (formatBirth(p) ? `${p.gender==='L'?'♂':'♀'} ${formatBirth(p)}` : (p.gender==='L'?'♂':'♀'));
+      const avR = 15, avCx = pos.x0+21, avCy = pos.y0+CARD_H/2;
+      let avatarSvg;
+      if(p.photo){
+        avatarSvg = `<clipPath id="clip-${pid}"><circle cx="${avCx}" cy="${avCy}" r="${avR}"/></clipPath><image href="${p.photo}" x="${avCx-avR}" y="${avCy-avR}" width="${avR*2}" height="${avR*2}" clip-path="url(#clip-${pid})" preserveAspectRatio="xMidYMid slice"/><circle cx="${avCx}" cy="${avCy}" r="${avR}" fill="none" stroke="${stroke}" stroke-width="1"/>`;
+      } else {
+        const initBg = p.gender==='L' ? '#dfe9f2' : '#f4e3d6';
+        const initFg = p.gender==='L' ? '#253a52' : '#8c3a2b';
+        avatarSvg = `<circle cx="${avCx}" cy="${avCy}" r="${avR}" fill="${initBg}" stroke="${stroke}" stroke-width="1"/><text x="${avCx}" y="${avCy+4}" text-anchor="middle" font-size="12" font-weight="700" fill="${initFg}">${escapeXml(displayName(p).charAt(0).toUpperCase())}</text>`;
+      }
+      svgContent += `
+        <g class="sk-node-card" data-id="${pid}">
+          <rect class="sk-card-bg" x="${pos.x0}" y="${pos.y0}" width="${CARD_W}" height="${CARD_H}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
+          ${avatarSvg}
+          <text x="${pos.x0+40}" y="${pos.y0+19}" text-anchor="start" font-size="12.5" font-weight="600" fill="${textColor}">${p.isDeceased?'☪ ':''}${escapeXml(truncate(displayName(p), 13))}</text>
+          <text x="${pos.x0+40}" y="${pos.y0+34}" text-anchor="start" font-size="10" fill="${isFocus?'#cfd8e2':'#5c4f3d'}">${escapeXml(truncate(lifespan,15))}</text>
+        </g>`;
+    });
+
+    const svgHtml = `<svg class="sk-tree" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>`;
+    const { shell, inner } = buildZoomShell(svgHtml, state.treeView, 560, width, height);
+    inner.querySelectorAll('.sk-node-card').forEach(g=>{
+      g.addEventListener('click', ()=>{ state.focusId = g.getAttribute('data-id'); render(); });
+    });
+    return shell;
+  }
+
+  function renderJaringan(){
+    const wrap = el('div', {});
+    wrap.appendChild(el('div', {class:'sk-section-title'}, ['🕸 Jaringan Keluarga']));
+    wrap.appendChild(el('div', {class:'sk-net-hint'}, ['Klik satu orang, lalu orang lain, untuk melihat alur hubungan antar keduanya disorot pada jaringan. Warna simpul menandakan asal keluarga besar (klan) masing-masing.']));
+
+    const ids = Object.keys(people);
+    if(ids.length === 0) return wrap;
+
+    const edgeSet = new Map();
+    Object.values(people).forEach(p=>{
+      if(p.fatherId && people[p.fatherId]) edgeSet.set([p.id,p.fatherId].sort().join('|'), [p.id,p.fatherId]);
+      if(p.motherId && people[p.motherId]) edgeSet.set([p.id,p.motherId].sort().join('|'), [p.id,p.motherId]);
+      p.spouseIds.forEach(sid=>{ if(people[sid]) edgeSet.set([p.id,sid].sort().join('|'), [p.id,sid]); });
+    });
+    const edges = Array.from(edgeSet.values());
+
+    clanColorAssign = {};
+    const clanOf = {};
+    ids.forEach(id=>{ clanOf[id] = getClanColor(id); });
+    const clanRootOf = {};
+    ids.forEach(id=>{ clanRootOf[id] = clanOf[id].rootId; });
+
+    const pos = computeNetworkLayout(ids, edges, clanRootOf);
+    const { W, H } = networkCanvasSize;
+
+    let highlightEdges = new Set();
+    let relResult = null;
+    if(state.netSelA && state.netSelB && state.netSelA !== state.netSelB){
+      relResult = describeRelation(state.netSelA, state.netSelB);
+      if(relResult.path){
+        for(let i=0;i<relResult.path.length-1;i++){
+          highlightEdges.add([relResult.path[i], relResult.path[i+1]].sort().join('|'));
+        }
+      }
+    }
+
+    // Kotak pencarian: cari nama, lalu langsung diarahkan & diperbesar ke orang itu di jaringan
+    const uniqueClanCount = new Set(ids.map(id=>clanOf[id].rootId)).size;
+    const searchWrap = el('div', {style:'display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;'});
+    const searchListId = 'sk-net-search-list';
+    const searchDatalist = el('datalist', {id: searchListId});
+    ids.forEach(id=> searchDatalist.appendChild(el('option', {value: displayName(people[id])})));
+    const searchInput = el('input', {type:'text', id:'sk-search-network', list: searchListId, placeholder:'🔍 Ketik atau pilih nama — langsung berpindah', style:'flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fffdf8;font-size:13px;font-family:inherit;'});
+    const searchBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 16px;margin:0;'}, ['Cari →']);
+    function jumpTo(found){
+      state.netSelA = found;
+      state.netCenterTarget = found;
+      render();
+    }
+    function doSearch(){
+      const q = normalizeName(searchInput.value);
+      if(!q) return;
+      const found = ids.find(id => nameMatches(people[id], q));
+      if(!found){ alert('Nama tidak ditemukan. Coba ketik ulang atau pilih dari saran yang muncul.'); return; }
+      jumpTo(found);
+    }
+    searchInput.addEventListener('input', ()=>{
+      const q = normalizeName(searchInput.value);
+      if(!q) return;
+      const found = ids.find(id => nameMatches(people[id], q));
+      if(found) jumpTo(found); // otomatis berpindah begitu nama yang diketik persis cocok (misal dipilih dari saran)
+    });
+    searchBtn.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doSearch(); } });
+    searchWrap.appendChild(searchInput);
+    searchWrap.appendChild(searchBtn);
+    searchWrap.appendChild(searchDatalist);
+    wrap.appendChild(searchWrap);
+    wrap.appendChild(el('div', {style:'font-size:11.5px;color:var(--ink-soft);margin-bottom:14px;'}, [`${ids.length} orang tercatat, terbagi dalam ${uniqueClanCount} kelompok keluarga besar (warna simpul menandakan kelompoknya).`]));
+
+    let svgContent = '';
+    edges.forEach(([a,b])=>{
+      const key = [a,b].sort().join('|');
+      const pa = pos[a], pb = pos[b];
+      if(!pa || !pb) return;
+      const isHi = highlightEdges.has(key);
+      const isSpouse = people[a] && people[a].spouseIds.includes(b);
+      svgContent += `<line x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${isHi?'#BA7517':'#cbb98c'}" stroke-width="${isHi?3:(isSpouse?1.5:1.2)}" ${isSpouse&&!isHi?'stroke-dasharray="3,3"':''} opacity="${isHi?1:0.65}"/>`;
+    });
+    ids.forEach(id=>{
+      const p = people[id];
+      const pp = pos[id];
+      if(!pp) return;
+      const {color} = clanOf[id];
+      const r = (state.netSelA===id || state.netSelB===id) ? 24 : 17;
+      const strokeColor = (state.netSelA===id || state.netSelB===id) ? '#BA7517' : '#fffdf8';
+      const photoOrFill = p.photo
+        ? `<clipPath id="netclip-${id}"><circle cx="${pp.x}" cy="${pp.y}" r="${r-3}"/></clipPath><circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="${color}"/><image href="${p.photo}" x="${pp.x-r+3}" y="${pp.y-r+3}" width="${(r-3)*2}" height="${(r-3)*2}" clip-path="url(#netclip-${id})" preserveAspectRatio="xMidYMid slice"/><circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`
+        : `<circle class="sk-net-dot" cx="${pp.x}" cy="${pp.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2.5"/>`;
+      const isSelected = state.netSelA===id || state.netSelB===id;
+      const prefix = p.isDeceased ? '☪ ' : '';
+      const words = displayName(p).split(' ');
+      let lines = [];
+      if(words.length <= 1){ lines = [prefix + (words[0]||'')]; }
+      else if(words.length === 2){ lines = [prefix + words[0], words[1]]; }
+      else {
+        const mid = Math.ceil(words.length/2);
+        lines = [prefix + words.slice(0,1).join(' '), words.slice(1, mid+1).join(' '), words.slice(mid+1).join(' ')].filter(Boolean);
+        if(lines.length > 3) lines = [lines[0], lines.slice(1).join(' ')];
+      }
+      lines = lines.slice(0,3);
+      const labelW = Math.max(34, Math.max(...lines.map(l=>l.length)) * 6.5);
+      const lineH = 13;
+      const labelTopY = pp.y + r + 13;
+      const tspans = lines.map((l,i)=>`<tspan x="${pp.x}" y="${labelTopY + i*lineH}">${escapeXml(l)}</tspan>`).join('');
+      svgContent += `
+        <g class="sk-net-node" data-id="${id}">
+          <title>${escapeXml(displayName(p))}${p.job?(' · '+escapeXml(p.job)):''}</title>
+          ${photoOrFill}
+          <rect x="${pp.x - labelW/2 - 4}" y="${labelTopY-11}" width="${labelW+8}" height="${lines.length*lineH+6}" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
+          <text text-anchor="middle" font-size="${isSelected?11.5:10.5}" font-weight="${isSelected?700:600}" fill="#2c2117">${tspans}</text>
+        </g>`;
+    });
+
+    const svgHtml = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>`;
+    const { shell, inner, fitToView, centerOn } = buildZoomShell(svgHtml, state.netView, 560, W, H);
+    if(state.netCenterTarget && pos[state.netCenterTarget]){
+      const target = pos[state.netCenterTarget];
+      const targetId = state.netCenterTarget;
+      state.netCenterTarget = null;
+      requestAnimationFrame(()=> centerOn(target.x, target.y, 1.4));
+    } else if(state.netView._fittedSig !== networkSignature){
+      state.netView._fittedSig = networkSignature;
+      requestAnimationFrame(fitToView);
+    }
+    inner.querySelectorAll('.sk-net-node').forEach(g=>{
+      g.addEventListener('click', ()=>{
+        const id = g.getAttribute('data-id');
+        if(state.netSelA === id){ state.netSelA = null; }
+        else if(state.netSelB === id){ state.netSelB = null; }
+        else if(!state.netSelA){ state.netSelA = id; }
+        else if(!state.netSelB){ state.netSelB = id; }
+        else { state.netSelA = id; state.netSelB = null; }
+        render();
+      });
+    });
+    wrap.appendChild(shell);
+
+    if(relResult){
+      const resWrap = el('div', {class:'sk-relation-result'});
+      resWrap.appendChild(el('div', {class:'sk-relation-title'}, ['Alur Hubungan']));
+      resWrap.appendChild(el('div', {}, [relResult.text]));
+      wrap.appendChild(resWrap);
+    } else if(state.netSelA){
+      wrap.appendChild(el('div', {style:'margin-top:10px;font-size:13px;color:var(--ink-soft);'}, [`Titik A: ${displayName(people[state.netSelA])}. Klik satu orang lagi untuk melihat alurnya.`]));
+    }
+
+    return wrap;
+  }
+
+  function truncate(s,n){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+  // ---------- Cetak / Simpan sebagai PDF ----------
+  function personLineHtml(p){
+    if(!p) return '(tidak diketahui)';
+    const bd = formatBirth(p), dd = formatDeath(p);
+    let line = `<strong>${escapeXml(displayName(p))}</strong>`;
+    if(p.name && p.alias) line += ` (alias ${escapeXml(p.alias)})`;
+    line += p.gender==='L' ? ' — Laki-laki' : ' — Perempuan';
+    if(bd) line += `, lahir ${escapeXml(bd)}`;
+    if(p.isDeceased) line += `, wafat ${dd?escapeXml(dd):'(tanggal tidak diketahui)'}`;
+    if(p.job) line += ` · ${escapeXml(p.job)}`;
+    if(p.address) line += ` · ${escapeXml(p.address)}`;
+    return line;
+  }
+
+  function genderStats(ids){
+    let L=0, P=0;
+    ids.forEach(id=>{ const p = people[id]; if(!p) return; if(p.gender==='L') L++; else P++; });
+    return { L, P, total: ids.length };
+  }
+  function statsHtml(stats){
+    return `<div style="display:flex;gap:18px;background:#f2ead9;border:1px solid #cbb98c;border-radius:8px;padding:10px 16px;margin-bottom:18px;font-size:13px;">
+      <div>👨 <strong>${stats.L}</strong> Laki-laki</div>
+      <div>👩 <strong>${stats.P}</strong> Perempuan</div>
+      <div>Σ <strong>${stats.total}</strong> Total</div>
+    </div>`;
+  }
+
+  function collectDescendantIds(rootId){
+    const visited = new Set();
+    function walk(id){
+      if(visited.has(id) || !people[id]) return;
+      visited.add(id);
+      people[id].childrenIds.forEach(walk);
+    }
+    walk(rootId);
+    return Array.from(visited);
+  }
+
+  function buildKeluargaKecilHtml(rootId){
+    const p = people[rootId];
+    const ids = new Set([rootId]);
+    if(p.fatherId) ids.add(p.fatherId);
+    if(p.motherId) ids.add(p.motherId);
+    p.spouseIds.forEach(sid=>ids.add(sid));
+    p.childrenIds.forEach(cid=>ids.add(cid));
+    let html = statsHtml(genderStats(Array.from(ids)));
+    html += `<h2>Diri Sendiri</h2><ul><li>${personLineHtml(p)}</li></ul>`;
+    if(p.fatherId || p.motherId){
+      html += `<h2>Orang Tua</h2><ul>`;
+      if(p.fatherId) html += `<li>${personLineHtml(people[p.fatherId])} (Ayah)</li>`;
+      if(p.motherId) html += `<li>${personLineHtml(people[p.motherId])} (Ibu)</li>`;
+      html += `</ul>`;
+    }
+    if(p.spouseIds.length){
+      html += `<h2>Pasangan</h2><ul>`;
+      p.spouseIds.forEach(sid=> html += `<li>${personLineHtml(people[sid])}</li>`);
+      html += `</ul>`;
+    }
+    if(p.childrenIds.length){
+      html += `<h2>Anak-Anak (${p.childrenIds.length})</h2><ul>`;
+      p.childrenIds.forEach(cid=> html += `<li>${personLineHtml(people[cid])}</li>`);
+      html += `</ul>`;
+    }
+    if(p.notes) html += `<h2>Keterangan</h2><p style="font-size:13px;">${escapeXml(p.notes)}</p>`;
+    return html;
+  }
+
+  function buildKeluargaBesarHtml(rootId){
+    const descIds = collectDescendantIds(rootId);
+    let html = statsHtml(genderStats(descIds));
+    const visited = new Set();
+    function walk(id){
+      if(visited.has(id)) return '';
+      visited.add(id);
+      const p = people[id];
+      if(!p) return '';
+      let li = `<li>${personLineHtml(p)}`;
+      if(p.spouseIds.length) li += ` <span class="spouse">— menikah dengan ${p.spouseIds.map(sid=>escapeXml(displayName(people[sid]))).join(', ')}</span>`;
+      if(p.childrenIds.length){
+        li += '<ul>' + p.childrenIds.map(walk).join('') + '</ul>';
+      }
+      li += '</li>';
+      return li;
+    }
+    html += `<h2>Silsilah Keturunan</h2><ul>${walk(rootId)}</ul>`;
+    return html;
+  }
+
+  function buildDataDiriHtml(id){
+    const p = people[id];
+    let html = '';
+    if(p.photo) html += `<div style="text-align:center;margin-bottom:18px;"><img src="${p.photo}" style="width:130px;height:130px;border-radius:50%;object-fit:cover;border:3px solid #c9974f;"/></div>`;
+    html += `<h2>Data Pribadi</h2><ul><li>${personLineHtml(p)}</li></ul>`;
+    if(p.contact) html += `<p style="font-size:13px;margin:10px 0 0 0;"><strong>No. Kontak:</strong> ${escapeXml(p.contact)}</p>`;
+    const refs = [];
+    if(p.fatherId) refs.push('Ayah: ' + displayName(people[p.fatherId]));
+    if(p.motherId) refs.push('Ibu: ' + displayName(people[p.motherId]));
+    if(p.spouseIds.length) refs.push('Pasangan: ' + p.spouseIds.map(sid=>displayName(people[sid])).join(', '));
+    if(p.childrenIds.length) refs.push('Anak: ' + p.childrenIds.map(cid=>displayName(people[cid])).join(', '));
+    if(refs.length) html += `<h2>Keluarga Terkait</h2><ul>${refs.map(r=>`<li>${escapeXml(r)}</li>`).join('')}</ul>`;
+    if(p.notes) html += `<h2>Keterangan</h2><p style="font-size:13px;">${escapeXml(p.notes)}</p>`;
+    return html;
+  }
+
+  function openPrintDoc(title, bodyHtml){
+    const win = window.open('', '_blank');
+    if(!win){ alert('Popup diblokir browser. Izinkan popup untuk situs ini di pengaturan browser, lalu coba lagi.'); return; }
+    const safeFileName = title.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g,'').slice(0,60) || 'silsilah';
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeXml(title)}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+    <style>
+      body{font-family:Georgia,'Times New Roman',serif;color:#2c2117;padding:30px;max-width:800px;margin:0 auto;}
+      h1{font-size:20px;color:#253a52;border-bottom:2px solid #c9974f;padding-bottom:8px;}
+      h2{font-size:15px;color:#253a52;margin-top:22px;margin-bottom:8px;}
+      ul{padding-left:22px;margin:0;} li{margin-bottom:7px;line-height:1.5;font-size:13px;}
+      .meta{font-size:11px;color:#777;margin-bottom:10px;}
+      .spouse{color:#8c3a2b;font-style:italic;}
+      #sk-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:18px;font-family:'Source Sans 3',sans-serif;}
+      #sk-download-btn{background:#253a52;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+      #sk-download-btn:disabled{opacity:0.6;cursor:wait;}
+      #sk-fallback{font-size:12px;color:#777;}
+      #sk-doc-content{}
+    </style></head><body>
+    <div id="sk-toolbar">
+      <button id="sk-download-btn" onclick="skDownloadPdf()">⬇ Unduh sebagai PDF</button>
+      <span id="sk-fallback">Kalau unduh gagal, gunakan <a href="#" onclick="window.print();return false;">Cetak (Ctrl/Cmd+P)</a> sebagai cadangan.</span>
+    </div>
+    <div id="sk-doc-content">
+      <h1>${escapeXml(title)}</h1>
+      <div class="meta">Dari Silsilah Keluarga — ${new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}</div>
+      ${bodyHtml}
+    </div>
+    <script>
+      function skDownloadPdf(){
+        const btn = document.getElementById('sk-download-btn');
+        const toolbar = document.getElementById('sk-toolbar');
+        btn.disabled = true; btn.textContent = 'Menyiapkan PDF...';
+        toolbar.style.display = 'none';
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p','pt','a4');
+        doc.html(document.getElementById('sk-doc-content'), {
+          margin: 24,
+          autoPaging: 'text',
+          width: 545,
+          windowWidth: 800,
+          callback: function(doc){
+            doc.save('${safeFileName}.pdf');
+            toolbar.style.display = 'flex';
+            btn.disabled = false; btn.textContent = '⬇ Unduh sebagai PDF';
+          }
+        });
+      }
+    <\/script>
+    </body></html>`);
+    win.document.close();
+  }
+
+  function escapeXml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ---------- init ----------
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:#5c4f3d;">Memuat data silsilah…</div>';
+  loadData().then(render);
+})();
+</script>
+
+<button id="install-btn" style="display:none;position:fixed;bottom:18px;right:18px;z-index:999;background:#253a52;color:#fff;border:none;border-radius:8px;padding:12px 18px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.2);">📲 Instal sebagai Aplikasi</button>
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('sw.js').catch(err=>console.warn('SW gagal:', err));
+    });
+  }
+  let deferredPrompt = null;
+  const installBtn = document.getElementById('install-btn');
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'block';
+  });
+  installBtn.addEventListener('click', async ()=>{
+    if(!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    installBtn.style.display = 'none';
+  });
+  window.addEventListener('appinstalled', ()=>{ installBtn.style.display = 'none'; });
+</script>
+</body>
+</html>
