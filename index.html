@@ -780,23 +780,6 @@
     const W = Math.max(700, maxRight + PAD);
     const H = Math.max(500, maxBottom + PAD);
 
-    // Kunci SEMUA posisi yang baru saja dihitung — bukan cuma yang Anda geser manual — supaya
-    // pada perhitungan berikutnya (mis. setelah menambah/mengedit nama lain) posisi orang-orang
-    // yang sudah pernah tampil ini diperlakukan sebagai tetap dan tidak lagi ikut disimulasikan ulang.
-    // Hanya orang yang BENAR-BENAR baru (belum pernah dihitung sama sekali) yang akan ditata otomatis.
-    let bakedAny = false;
-    ids.forEach(id=>{
-      const p = people[id];
-      if(!p) return;
-      // Jangan sentuh kalau sudah ada netPos SAMA SEKALI (termasuk format lama {dx,dy} yang
-      // masih menunggu migrasi) — hanya orang yang belum pernah punya netPos yang dikunci di sini.
-      if(!p.netPos && pos[id]){
-        p.netPos = { x: pos[id].x, y: pos[id].y };
-        bakedAny = true;
-      }
-    });
-    if(bakedAny) saveData();
-
     networkPositions = pos;
     networkSignature = sig;
     networkIslandOf = islandOf;
@@ -1705,7 +1688,7 @@
   function renderJaringan(){
     const wrap = el('div', {});
     wrap.appendChild(el('div', {class:'sk-section-title'}, ['🕸 Jaringan Keluarga']));
-    wrap.appendChild(el('div', {class:'sk-net-hint'}, ['Klik satu orang, lalu orang lain, untuk melihat alur hubungan antar keduanya disorot pada jaringan. Warna simpul dan garis menandakan asal keluarga besar (klan) masing-masing. Seret (drag) sebuah nama untuk mengatur ulang posisinya secara manual — posisi akan tersimpan otomatis.']));
+    wrap.appendChild(el('div', {class:'sk-net-hint'}, ['Klik satu orang, lalu orang lain, untuk melihat alur hubungan antar keduanya disorot pada jaringan. Warna simpul dan garis menandakan asal keluarga besar (klan) masing-masing. Seret (drag) sebuah nama untuk mengatur ulang posisinya secara manual — posisi akan tersimpan otomatis. Tahan tombol Shift sambil menyeret untuk menggeser satu keluarga besar sekaligus.']));
 
     const ids = Object.keys(people);
     if(ids.length === 0) return wrap;
@@ -1748,6 +1731,21 @@
 
     const pos = computeNetworkLayout(ids, edges, clanRootOf);
     const { W, H } = networkCanvasSize;
+
+    // "Bekukan" posisi semua orang begitu pertama kali ditampilkan — bukan cuma yang pernah digeser
+    // manual. Kalau tidak, setiap kali ada tambahan/perubahan data, simulasi tata-letak dihitung ulang
+    // dari nol untuk semua orang yang belum "dikunci", dan hasilnya bisa sedikit berbeda tiap kali walau
+    // orangnya sama persis — ini yang membuat jaringan terasa "berubah sendiri". Dengan membekukan semua
+    // posisi begitu tampil, penambahan orang baru berikutnya hanya menata orang yang benar-benar baru
+    // di sekitar kerabatnya, tanpa menyentuh siapa pun yang sudah pernah ditampilkan sebelumnya.
+    let anyNewlyFixed = false;
+    ids.forEach(id=>{
+      if(!people[id].netPos && pos[id]){
+        people[id].netPos = { x: pos[id].x, y: pos[id].y };
+        anyNewlyFixed = true;
+      }
+    });
+    if(anyNewlyFixed) saveData();
 
     let highlightEdges = new Set();
     let relResult = null;
@@ -1793,7 +1791,7 @@
     searchWrap.appendChild(searchDatalist);
     const resetLayoutBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:8px 14px;margin:0;font-size:12.5px;'}, ['↺ Reset Tata Letak']);
     resetLayoutBtn.addEventListener('click', ()=>{
-      if(!window.confirm('Ini akan mengembalikan SEMUA posisi nama (baik yang pernah Anda geser manual maupun yang tersusun otomatis) ke susunan otomatis dari awal. Lanjutkan?')) return;
+      if(!window.confirm('Ini akan mengembalikan SEMUA posisi nama yang pernah Anda geser manual ke susunan otomatis. Lanjutkan?')) return;
       let changed = false;
       ids.forEach(id=>{ if(people[id].netPos){ delete people[id].netPos; changed = true; } });
       if(changed) saveData();
@@ -1856,6 +1854,7 @@
       svgContent += `
         <g class="sk-net-node" data-id="${id}" style="cursor:grab;">
           <title>${escapeXml(displayName(p))}${p.job?(' · '+escapeXml(p.job)):''}</title>
+          <circle cx="${pp.x}" cy="${pp.y}" r="${Math.max(r*2.2, 34)}" fill="#000" fill-opacity="0.001" pointer-events="all"/>
           ${photoOrFill}
           <rect x="${pp.x - labelW/2 - 4}" y="${labelTopY-11}" width="${labelW+8}" height="${lines.length*lineH+6}" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
           <text text-anchor="middle" font-size="${isSelected?11.5:10.5}" font-weight="${isSelected?700:600}" fill="#2c2117">${tspans}</text>
@@ -1878,14 +1877,28 @@
       g.addEventListener('pointerdown', e=>{
         e.stopPropagation();
         e.preventDefault();
-        try{ g.setPointerCapture(e.pointerId); }catch(err){}
         const startClientX = e.clientX, startClientY = e.clientY;
         const scaleAtStart = state.netView.scale || 1;
-        const origin = { x: pos[id].x, y: pos[id].y };
-        const lines = Array.from(inner.querySelectorAll(`line[data-a="${id}"], line[data-b="${id}"]`));
+        // Tahan tombol Shift sambil menyeret untuk menggeser SATU KELUARGA BESAR (klan) sekaligus,
+        // bukan cuma satu nama saja.
+        const groupIds = e.shiftKey
+          ? ids.filter(oid => networkIslandOf[oid] && networkIslandOf[oid] === networkIslandOf[id])
+          : [id];
+        const groupIdSet = new Set(groupIds);
+        const origins = {};
+        groupIds.forEach(gid=>{ if(pos[gid]) origins[gid] = { x: pos[gid].x, y: pos[gid].y }; });
+        const groupNodes = groupIds
+          .map(gid => inner.querySelector(`.sk-net-node[data-id="${gid}"]`))
+          .filter(Boolean);
+        const lines = Array.from(inner.querySelectorAll('line')).filter(line=>{
+          const a = line.getAttribute('data-a'), b = line.getAttribute('data-b');
+          return groupIdSet.has(a) || groupIdSet.has(b);
+        });
         let moved = false;
         g.style.cursor = 'grabbing';
 
+        // Dipasang di window (bukan di titiknya sendiri) supaya geseran tetap terekam dengan andal
+        // walau kursor bergerak cepat keluar dari area titik, atau saat tombol dilepas di luar titik.
         function onMove(ev){
           const dxScreen = ev.clientX - startClientX;
           const dyScreen = ev.clientY - startClientY;
@@ -1893,23 +1906,27 @@
           if(!moved) return;
           const dx = dxScreen / scaleAtStart;
           const dy = dyScreen / scaleAtStart;
-          g.setAttribute('transform', `translate(${dx},${dy})`);
+          groupNodes.forEach(n=> n.setAttribute('transform', `translate(${dx},${dy})`));
           lines.forEach(line=>{
-            if(line.getAttribute('data-a') === id){ line.setAttribute('x1', origin.x + dx); line.setAttribute('y1', origin.y + dy); }
-            if(line.getAttribute('data-b') === id){ line.setAttribute('x2', origin.x + dx); line.setAttribute('y2', origin.y + dy); }
+            const a = line.getAttribute('data-a'), b = line.getAttribute('data-b');
+            if(groupIdSet.has(a) && origins[a]){ line.setAttribute('x1', origins[a].x + dx); line.setAttribute('y1', origins[a].y + dy); }
+            if(groupIdSet.has(b) && origins[b]){ line.setAttribute('x2', origins[b].x + dx); line.setAttribute('y2', origins[b].y + dy); }
           });
         }
         function onUp(ev){
-          g.removeEventListener('pointermove', onMove);
-          g.removeEventListener('pointerup', onUp);
-          g.removeEventListener('pointercancel', onUp);
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
           g.style.cursor = 'grab';
           if(moved){
             const dx = (ev.clientX - startClientX) / scaleAtStart;
             const dy = (ev.clientY - startClientY) / scaleAtStart;
             // Simpan sebagai koordinat TETAP (bukan offset relatif) — sekali diatur di sini, posisi
-            // orang ini terkunci dan tidak akan lagi ikut berubah walau nanti ada nama baru ditambahkan.
-            people[id].netPos = { x: origin.x + dx, y: origin.y + dy };
+            // orang ini (atau seisi keluarganya kalau Shift ditekan) terkunci dan tidak akan lagi ikut
+            // berubah walau nanti ada nama baru ditambahkan.
+            groupIds.forEach(gid=>{
+              if(origins[gid]) people[gid].netPos = { x: origins[gid].x + dx, y: origins[gid].y + dy };
+            });
             saveData();
             render();
           } else {
@@ -1921,9 +1938,9 @@
             render();
           }
         }
-        g.addEventListener('pointermove', onMove);
-        g.addEventListener('pointerup', onUp);
-        g.addEventListener('pointercancel', onUp);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
       });
     });
     wrap.appendChild(shell);
