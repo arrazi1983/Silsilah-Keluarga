@@ -1816,7 +1816,6 @@
       return clanOf[a] ? clanOf[a].color : '#cbb98c';
     }
     let svgContent = '';
-    const SPOUSE_COLOR = '#B23A2F'; // merah bata tua — konsisten untuk semua garis pernikahan, terlepas dari klan
     edges.forEach(([a,b])=>{
       const key = [a,b].sort().join('|');
       const pa = pos[a], pb = pos[b];
@@ -1824,14 +1823,13 @@
       const isHi = highlightEdges.has(key);
       const isSpouse = people[a] && people[a].spouseIds.includes(b);
       const sameIsland = networkIslandOf[a] && networkIslandOf[a] === networkIslandOf[b];
-      // Garis PERNIKAHAN selalu merah tua & putus-putus, di mana pun posisinya, supaya langsung dikenali.
-      // Garis ayah-anak di DALAM satu keluarga besar (pulau yang sama) diwarnai per klan supaya gampang
-      // ditelusuri arahnya. Garis ayah-anak LINTAS keluarga besar dibuat netral & tipis saja, supaya
-      // tidak mendominasi tampilan dengan garis panjang berwarna-warni.
-      const col = isHi ? '#BA7517' : (isSpouse ? SPOUSE_COLOR : (sameIsland ? edgeColor(a,b) : '#c9c2b0'));
-      const baseWidth = isHi ? 3 : (isSpouse ? 1.8 : (sameIsland ? 1.3 : 1));
-      const baseOpacity = isHi ? 1 : (isSpouse ? 0.8 : (sameIsland ? 0.6 : 0.4));
-      svgContent += `<line data-a="${a}" data-b="${b}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${col}" stroke-width="${baseWidth}" ${isSpouse&&!isHi?'stroke-dasharray="4,3"':''} opacity="${baseOpacity}"/>`;
+      // Garis di DALAM satu keluarga besar (pulau yang sama) diwarnai per klan supaya gampang ditelusuri
+      // arahnya. Garis LINTAS keluarga besar (mis. pernikahan antar-klan yang jauh) dibuat netral & tipis
+      // saja, supaya tidak mendominasi tampilan dengan garis panjang berwarna-warni.
+      const col = isHi ? '#BA7517' : (sameIsland ? edgeColor(a,b) : '#c9c2b0');
+      const baseWidth = isHi ? 3 : (sameIsland ? (isSpouse?1.6:1.3) : 1);
+      const baseOpacity = isHi ? 1 : (sameIsland ? 0.6 : 0.4);
+      svgContent += `<line data-a="${a}" data-b="${b}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${col}" stroke-width="${baseWidth}" ${isSpouse&&!isHi?'stroke-dasharray="3,3"':''} opacity="${baseOpacity}"/>`;
     });
     ids.forEach(id=>{
       const p = people[id];
@@ -1862,7 +1860,7 @@
       svgContent += `
         <g class="sk-net-node" data-id="${id}" style="cursor:grab;">
           <title>${escapeXml(displayName(p))}${p.job?(' · '+escapeXml(p.job)):''}</title>
-          <circle cx="${pp.x}" cy="${pp.y}" r="${Math.max(r*1.5, 24)}" fill="#000" fill-opacity="0.001" pointer-events="all"/>
+          <circle cx="${pp.x}" cy="${pp.y}" r="${Math.max(r*2.2, 34)}" fill="#000" fill-opacity="0.001" pointer-events="all"/>
           ${photoOrFill}
           <rect x="${pp.x - labelW/2 - 4}" y="${labelTopY-11}" width="${labelW+8}" height="${lines.length*lineH+6}" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
           <text text-anchor="middle" font-size="${isSelected?11.5:10.5}" font-weight="${isSelected?700:600}" fill="#2c2117">${tspans}</text>
@@ -1892,22 +1890,22 @@
         const groupIds = e.shiftKey
           ? ids.filter(oid => networkIslandOf[oid] && networkIslandOf[oid] === networkIslandOf[id])
           : [id];
-        const groupIdSet = new Set(groupIds);
         const origins = {};
         groupIds.forEach(gid=>{ if(pos[gid]) origins[gid] = { x: pos[gid].x, y: pos[gid].y }; });
-        // Selama menyeret, cukup pindahkan tampilan titik-titik ini saja secara langsung (murah & cepat,
-        // supaya mengikuti kursor tanpa jeda) — data aslinya baru ditulis & tata-letak dihitung ulang
-        // sekali saja begitu tombol dilepas, supaya hasil akhirnya selalu akurat tanpa harus menggambar
-        // ulang seluruh halaman di setiap gerakan mouse (yang bisa terasa berat/lag kalau orangnya banyak).
-        const groupNodes = groupIds
-          .map(gid => inner.querySelector(`.sk-net-node[data-id="${gid}"]`))
-          .filter(Boolean);
-        const lines = Array.from(inner.querySelectorAll('line')).filter(line=>{
-          const a = line.getAttribute('data-a'), b = line.getAttribute('data-b');
-          return groupIdSet.has(a) || groupIdSet.has(b);
-        });
         let moved = false;
+        let rafScheduled = false;
         document.body.style.cursor = 'grabbing';
+
+        // Terapkan posisi baru langsung ke DATA aslinya (bukan cuma tampilan sementara), lalu minta
+        // tata-letak dihitung ulang supaya render berikutnya benar-benar memakai posisi terbaru ini.
+        // Dengan begitu, apa yang terlihat saat diseret selalu sama persis dengan apa yang tersimpan —
+        // tidak ada lagi "tampilan sementara" yang bisa beda dari hasil akhirnya.
+        function applyDelta(dx, dy){
+          groupIds.forEach(gid=>{
+            if(origins[gid]) people[gid].netPos = { x: origins[gid].x + dx, y: origins[gid].y + dy };
+          });
+          networkSignature = '';
+        }
 
         // Dipasang di window (bukan di titiknya sendiri) supaya geseran tetap terekam dengan andal
         // walau kursor bergerak cepat keluar dari area titik, atau saat tombol dilepas di luar titik.
@@ -1918,12 +1916,11 @@
           if(!moved) return;
           const dx = dxScreen / scaleAtStart;
           const dy = dyScreen / scaleAtStart;
-          groupNodes.forEach(n=> n.setAttribute('transform', `translate(${dx},${dy})`));
-          lines.forEach(line=>{
-            const a = line.getAttribute('data-a'), b = line.getAttribute('data-b');
-            if(groupIdSet.has(a) && origins[a]){ line.setAttribute('x1', origins[a].x + dx); line.setAttribute('y1', origins[a].y + dy); }
-            if(groupIdSet.has(b) && origins[b]){ line.setAttribute('x2', origins[b].x + dx); line.setAttribute('y2', origins[b].y + dy); }
-          });
+          applyDelta(dx, dy);
+          if(!rafScheduled){
+            rafScheduled = true;
+            requestAnimationFrame(()=>{ rafScheduled = false; render(); });
+          }
         }
         function onUp(ev){
           window.removeEventListener('pointermove', onMove);
@@ -1936,10 +1933,7 @@
             // Simpan sebagai koordinat TETAP (bukan offset relatif) — sekali diatur di sini, posisi
             // orang ini (atau seisi keluarganya kalau Shift ditekan) terkunci dan tidak akan lagi ikut
             // berubah walau nanti ada nama baru ditambahkan.
-            groupIds.forEach(gid=>{
-              if(origins[gid]) people[gid].netPos = { x: origins[gid].x + dx, y: origins[gid].y + dy };
-            });
-            networkSignature = ''; // paksa hitung ulang, jangan pakai cache lama (ini penyebab "balik lagi" sebelumnya)
+            applyDelta(dx, dy);
             saveData();
             render();
           } else {
