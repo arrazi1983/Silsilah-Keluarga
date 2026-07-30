@@ -1946,6 +1946,7 @@
         // supaya mengikuti kursor tanpa jeda) — data aslinya baru ditulis & tata-letak dihitung ulang
         // sekali saja begitu tombol dilepas, supaya hasil akhirnya selalu akurat tanpa harus menggambar
         // ulang seluruh halaman di setiap gerakan mouse (yang bisa terasa berat/lag kalau orangnya banyak).
+        const primaryNode = inner.querySelector(`.sk-net-node[data-id="${id}"]`) || g;
         const groupNodes = groupIds
           .map(gid => inner.querySelector(`.sk-net-node[data-id="${gid}"]`))
           .filter(Boolean);
@@ -1955,9 +1956,11 @@
         });
         let moved = false;
         document.body.style.cursor = 'grabbing';
+        try{ primaryNode.setPointerCapture(e.pointerId); }catch(err){}
 
-        // Dipasang di window (bukan di titiknya sendiri) supaya geseran tetap terekam dengan andal
-        // walau kursor bergerak cepat keluar dari area titik, atau saat tombol dilepas di luar titik.
+        // Dipasang langsung pada titik utamanya (dengan pointer capture) — begitu tombol ditekan,
+        // SEMUA gerakan mouse berikutnya dijamin oleh browser tetap "milik" titik ini, di mana pun
+        // kursor secara fisik berada, sampai tombol dilepas.
         function onMove(ev){
           const p = svgPointFromEvent(ev);
           const dxScreen = ev.clientX - e.clientX, dyScreen = ev.clientY - e.clientY;
@@ -1975,9 +1978,9 @@
           });
         }
         function onUp(ev){
-          window.removeEventListener('pointermove', onMove);
-          window.removeEventListener('pointerup', onUp);
-          window.removeEventListener('pointercancel', onUp);
+          primaryNode.removeEventListener('pointermove', onMove);
+          primaryNode.removeEventListener('pointerup', onUp);
+          primaryNode.removeEventListener('pointercancel', onUp);
           document.body.style.cursor = '';
           if(moved){
             const p = svgPointFromEvent(ev);
@@ -2001,9 +2004,9 @@
             render();
           }
         }
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
-        window.addEventListener('pointercancel', onUp);
+        primaryNode.addEventListener('pointermove', onMove);
+        primaryNode.addEventListener('pointerup', onUp);
+        primaryNode.addEventListener('pointercancel', onUp);
       });
     });
     wrap.appendChild(shell);
