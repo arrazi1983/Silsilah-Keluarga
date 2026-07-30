@@ -1905,18 +1905,35 @@
       requestAnimationFrame(()=>{ fitToView(); refreshHitRadii(); });
     }
     inner.querySelectorAll('.sk-net-node').forEach(g=>{
-      const id = g.getAttribute('data-id');
       g.addEventListener('pointerdown', e=>{
         e.stopPropagation();
         e.preventDefault();
-        // Ubah posisi layar kursor menjadi koordinat di dalam SVG (memakai ukuran & posisi SVG yang
-        // SEDANG tampil saat itu juga — bukan asumsi skala dari awal), supaya nama yang diseret selalu
-        // tepat mengikuti kursor, tidak peduli persis di mana di dalam area klik Anda menekan.
+        // Memakai fungsi RESMI bawaan SVG untuk mengubah posisi kursor di layar menjadi posisi yang
+        // tepat di dalam peta — ini metode standar browser sendiri (bukan rumus hitung-hitungan manual
+        // lagi), supaya nama yang diseret dijamin menempel persis di kursor, tidak peduli seberapa
+        // zoom/geser tampilan saat ini.
+        const svgEl = inner.querySelector('svg');
+        const svgPt = svgEl.createSVGPoint();
         function svgPointFromEvent(ev){
-          const r = inner.getBoundingClientRect();
-          const sc = r.width ? (r.width / (W || 1)) : (state.netView.scale || 1);
-          return { x: (ev.clientX - r.left) / sc, y: (ev.clientY - r.top) / sc };
+          svgPt.x = ev.clientX;
+          svgPt.y = ev.clientY;
+          const ctm = svgEl.getScreenCTM();
+          if(!ctm) return { x: 0, y: 0 };
+          const p = svgPt.matrixTransform(ctm.inverse());
+          return { x: p.x, y: p.y };
         }
+        // Area klik tak-terlihat di sekitar tiap nama sengaja dibuat cukup besar (supaya gampang
+        // dipegang saat zoom kecil), tapi ini bisa membuat area dua nama yang berdekatan saling
+        // tumpang tindih. Supaya yang benar-benar tertangkap SELALU nama yang paling dekat dengan
+        // kursor (bukan sekadar nama mana pun yang kebetulan "menang" duluan), cari ulang di sini.
+        const downPoint = svgPointFromEvent(e);
+        let id = g.getAttribute('data-id');
+        let bestDist = Infinity;
+        ids.forEach(oid=>{
+          const pp = pos[oid]; if(!pp) return;
+          const dist = (pp.x-downPoint.x)**2 + (pp.y-downPoint.y)**2;
+          if(dist < bestDist){ bestDist = dist; id = oid; }
+        });
         // Tahan tombol Shift sambil menyeret untuk menggeser SATU KELUARGA BESAR (klan) sekaligus,
         // bukan cuma satu nama saja.
         const groupIds = e.shiftKey
@@ -1946,9 +1963,8 @@
           const dxScreen = ev.clientX - e.clientX, dyScreen = ev.clientY - e.clientY;
           if(!moved && (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3)) moved = true;
           if(!moved) return;
-          // dx/dy dihitung dari posisi ASLI nama yang diklik (bukan dari titik persis Anda menekan) —
-          // supaya namanya langsung menempel tepat di kursor sejak awal, tidak peduli Anda menekan agak
-          // meleset dari titik tengahnya (area kliknya memang dibuat lebih lebar dari titiknya sendiri).
+          // Nama yang diklik ditempatkan TEPAT di titik p (posisi kursor saat ini di dalam peta) —
+          // bukan mempertahankan selisih dari titik persis Anda menekan tadi.
           const dx = p.x - origins[id].x;
           const dy = p.y - origins[id].y;
           groupNodes.forEach(n=> n.setAttribute('transform', `translate(${dx},${dy})`));
@@ -1973,7 +1989,7 @@
             groupIds.forEach(gid=>{
               if(origins[gid]) people[gid].netPos = { x: origins[gid].x + dx, y: origins[gid].y + dy };
             });
-            networkSignature = ''; // paksa hitung ulang, jangan pakai cache lama (ini penyebab "balik lagi" sebelumnya)
+            networkSignature = ''; // paksa hitung ulang, jangan pakai cache lama
             saveData();
             render();
           } else {
