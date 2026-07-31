@@ -1955,12 +1955,15 @@
           return groupIdSet.has(a) || groupIdSet.has(b);
         });
         let moved = false;
+        let finished = false; // pengaman: pastikan proses "simpan posisi akhir" ini hanya berjalan SATU KALI,
+                               // supaya tidak ada kejadian dobel-trigger yang bisa saling menimpa satu sama lain
         document.body.style.cursor = 'grabbing';
         try{ primaryNode.setPointerCapture(e.pointerId); }catch(err){}
 
         // Dipasang langsung pada titik utamanya (dengan pointer capture) — begitu tombol ditekan,
         // SEMUA gerakan mouse berikutnya dijamin oleh browser tetap "milik" titik ini, di mana pun
-        // kursor secara fisik berada, sampai tombol dilepas.
+        // kursor secara fisik berada, sampai tombol dilepas. Ditambah pemantau cadangan di window,
+        // supaya tetap tertangkap kalau untuk alasan tertentu pointer-capture tak bekerja mestinya.
         function onMove(ev){
           const p = svgPointFromEvent(ev);
           const dxScreen = ev.clientX - e.clientX, dyScreen = ev.clientY - e.clientY;
@@ -1977,11 +1980,19 @@
             if(groupIdSet.has(b) && origins[b]){ line.setAttribute('x2', origins[b].x + dx); line.setAttribute('y2', origins[b].y + dy); }
           });
         }
-        function onUp(ev){
+        function cleanup(){
           primaryNode.removeEventListener('pointermove', onMove);
           primaryNode.removeEventListener('pointerup', onUp);
           primaryNode.removeEventListener('pointercancel', onUp);
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
           document.body.style.cursor = '';
+        }
+        function onUp(ev){
+          if(finished) return; // sudah pernah diproses sekali — abaikan kalau ada event susulan yang keliru
+          finished = true;
+          cleanup();
           if(moved){
             const p = svgPointFromEvent(ev);
             const dx = p.x - origins[id].x;
@@ -2007,6 +2018,9 @@
         primaryNode.addEventListener('pointermove', onMove);
         primaryNode.addEventListener('pointerup', onUp);
         primaryNode.addEventListener('pointercancel', onUp);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
       });
     });
     wrap.appendChild(shell);
