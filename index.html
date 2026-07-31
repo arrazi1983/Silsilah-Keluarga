@@ -452,7 +452,6 @@
   let networkPositions = {};
   let networkSignature = '';
   let networkCanvasSize = { W: 1000, H: 700 };
-  let networkIslandOf = {};
   let nodeExtentCache = {};
   const NODE_GAP = 16; // jarak kosong minimal yang selalu dijaga antar kotak nama, supaya tak pernah bertabrakan
 
@@ -489,7 +488,7 @@
   }
 
   // Lapisan pembersihan akhir: dorong pelan-pelan sampai benar-benar tak ada kotak nama yang tumpang tindih.
-  function resolveOverlaps(nodeIds, pos, passes, fixedSet){
+  function resolveOverlaps(nodeIds, pos, passes){
     const n = nodeIds.length;
     for(let pass=0; pass<passes; pass++){
       let moved = false;
@@ -501,16 +500,9 @@
           const ux=dx/dist, uy=dy/dist;
           const minDist = minSepAlong(nodeExtent(a), nodeExtent(b), ux, uy);
           if(dist < minDist - 0.5){
-            const aFixed = fixedSet && fixedSet.has(a);
-            const bFixed = fixedSet && fixedSet.has(b);
-            if(aFixed && bFixed) continue; // keduanya sudah ditetapkan manual, jangan diapa-apakan
             const push = (minDist - dist)/2 + 0.3;
-            if(aFixed){ pos[b].x -= ux*push*2; pos[b].y -= uy*push*2; }
-            else if(bFixed){ pos[a].x += ux*push*2; pos[a].y += uy*push*2; }
-            else {
-              pos[a].x += ux*push; pos[a].y += uy*push;
-              pos[b].x -= ux*push; pos[b].y -= uy*push;
-            }
+            pos[a].x += ux*push; pos[a].y += uy*push;
+            pos[b].x -= ux*push; pos[b].y -= uy*push;
             moved = true;
           }
         }
@@ -519,41 +511,31 @@
     }
   }
 
-  function layoutCluster(nodeIds, edgePairs, fixedPositions){
-    fixedPositions = fixedPositions || {};
-    const fixedSet = new Set(Object.keys(fixedPositions).filter(id=>nodeIds.includes(id)));
+  function layoutCluster(nodeIds, edgePairs, clanRootOf){
     const n = nodeIds.length;
-    if(n === 1){
-      const only = nodeIds[0];
-      return { [only]: fixedSet.has(only) ? {x:fixedPositions[only].x, y:fixedPositions[only].y} : {x:0,y:0} };
-    }
-    if(fixedSet.size === n){
-      // Semua anggota sudah punya posisi tetap — tak ada yang perlu disimulasikan, langsung pakai saja.
-      const out = {};
-      nodeIds.forEach(id=>{ out[id] = { x: fixedPositions[id].x, y: fixedPositions[id].y }; });
-      return out;
-    }
+    if(n === 1){ return { [nodeIds[0]]: {x:0,y:0} }; }
     const pos = {};
-    // Kalau ada anggota yang posisinya sudah ditetapkan manual (fixed), mulai simpul bebas lainnya
-    // di sekitar pusat titik-titik tetap itu supaya simulasi lebih cepat menyatu dan tak melayang jauh.
-    let baseX = 0, baseY = 0;
-    if(fixedSet.size){
-      fixedSet.forEach(id=>{ baseX += fixedPositions[id].x; baseY += fixedPositions[id].y; });
-      baseX /= fixedSet.size; baseY /= fixedSet.size;
-    }
     const startRadius = Math.max(90, n*11);
     nodeIds.forEach((id,i)=>{
-      if(fixedSet.has(id)){
-        pos[id] = { x: fixedPositions[id].x, y: fixedPositions[id].y };
-      } else {
-        const angle = (i/n) * 2 * Math.PI;
-        pos[id] = { x: baseX + Math.cos(angle)*startRadius, y: baseY + Math.sin(angle)*startRadius };
-      }
+      const angle = (i/n) * 2 * Math.PI;
+      pos[id] = { x: Math.cos(angle)*startRadius, y: Math.sin(angle)*startRadius };
     });
+
+    // Kelompokkan per klan (garis ayah) supaya, walau satu keluarga besar terhubung lewat pernikahan,
+    // orang-orang dari klan yang sama tetap condong mengumpul jadi satu area yang mudah dikenali.
+    const byClan = {};
+    if(clanRootOf){
+      nodeIds.forEach(id=>{
+        const root = clanRootOf[id] || id;
+        (byClan[root] = byClan[root] || []).push(id);
+      });
+    }
+    const clanGroups = Object.values(byClan).filter(g=>g.length>1);
 
     const REST = 78;        // jarak dasar yang diusahakan untuk hubungan langsung (suami-istri, ortu-anak)
     const SPRING = 0.09;    // kekuatan tarik ke jarak ideal pada hubungan langsung
     const GRAVITY = 0.010;  // tarikan lemah ke pusat kelompok — mencegah cabang jauh "kabur" menjauh dari keluarganya
+    const CLAN_GRAVITY = 0.028; // tarikan tambahan ke pusat klan sendiri — memisahkan klan secara visual
     const FAR_PUSH = 2600;  // tolakan jarak-jauh yang lemah, sekadar menyebar kelompok, tak sampai merenggangkan semua orang
     const iterations = Math.min(600, 220 + n*6);
 
@@ -598,9 +580,18 @@
         disp[id].y += (cy - pos[id].y) * GRAVITY;
       });
 
+      clanGroups.forEach(group=>{
+        let gx=0, gy=0;
+        group.forEach(id=>{ gx+=pos[id].x; gy+=pos[id].y; });
+        gx/=group.length; gy/=group.length;
+        group.forEach(id=>{
+          disp[id].x += (gx - pos[id].x) * CLAN_GRAVITY;
+          disp[id].y += (gy - pos[id].y) * CLAN_GRAVITY;
+        });
+      });
+
       const temp = Math.max(0.6, 16*(1-iter/iterations));
       nodeIds.forEach(id=>{
-        if(fixedSet.has(id)) return; // posisi yang sudah ditetapkan manual tidak pernah digeser otomatis
         let dx=disp[id].x, dy=disp[id].y;
         let dist=Math.sqrt(dx*dx+dy*dy) || 0.01;
         const limited = Math.min(dist, temp*6);
@@ -609,37 +600,8 @@
       });
     }
 
-    resolveOverlaps(nodeIds, pos, 50, fixedSet);
+    resolveOverlaps(nodeIds, pos, 50);
     return pos;
-  }
-
-  // Menentukan "pulau keluarga" tempat seseorang ditampilkan: ikuti garis ayah ke leluhur klan.
-  // Kalau seseorang tidak punya data ayah (misal istri/menantu yang menikah masuk tanpa data orang tuanya),
-  // ia ditempatkan mengikuti pulau pasangannya, supaya satu keluarga inti tetap tampil bersama di satu pulau,
-  // bukan malah jadi pulau sendiri yang mengambang terpisah.
-  function getIslandRoot(id, cache, seen){
-    seen = seen || new Set();
-    if(cache[id]) return cache[id];
-    if(seen.has(id)) return id;
-    seen.add(id);
-    const p = people[id];
-    if(!p) return id;
-    if(p.fatherId && people[p.fatherId]){
-      const r = getIslandRoot(p.fatherId, cache, seen);
-      cache[id] = r;
-      return r;
-    }
-    if(p.spouseIds && p.spouseIds.length){
-      const withParents = p.spouseIds.find(sid => people[sid] && people[sid].fatherId);
-      const chosenSpouse = withParents || p.spouseIds[0];
-      if(people[chosenSpouse]){
-        const r = getIslandRoot(chosenSpouse, cache, seen);
-        cache[id] = r;
-        return r;
-      }
-    }
-    cache[id] = id;
-    return id;
   }
 
   function computeNetworkLayout(ids, edgePairs, clanRootOf){
@@ -647,108 +609,45 @@
     if(sig === networkSignature) return networkPositions;
     nodeExtentCache = {}; // nama bisa berubah antar-render, jadi hitung ulang ukurannya
 
-    // Kelompokkan menjadi "pulau" per KELUARGA BESAR (klan/garis ayah) — bukan sekadar "siapa terhubung siapa" —
-    // supaya tiap keluarga besar tampil sebagai pulau yang benar-benar terpisah dan mudah dikenali.
-    const islandCache = {};
-    const islandOf = {};
-    ids.forEach(id=>{ islandOf[id] = getIslandRoot(id, islandCache); });
-    const islandsMap = {};
-    ids.forEach(id=>{ (islandsMap[islandOf[id]] = islandsMap[islandOf[id]] || []).push(id); });
-    let islandEntries = Object.entries(islandsMap);
-    islandEntries.sort((a,b)=> b[1].length - a[1].length);
-
-    // Petakan sambungan ANTAR pulau (misal pernikahan lintas keluarga besar), untuk menyusun urutan
-    // penempatan pulau: pulau yang saling tersambung ditaruh berdekatan, supaya garis penghubungnya
-    // tidak melintang jauh ke seluruh kanvas.
-    const crossLinks = {};
-    edgePairs.forEach(([a,b])=>{
-      const ra = islandOf[a], rb = islandOf[b];
-      if(ra === rb) return;
-      crossLinks[ra] = crossLinks[ra] || {};
-      crossLinks[rb] = crossLinks[rb] || {};
-      crossLinks[ra][rb] = (crossLinks[ra][rb]||0) + 1;
-      crossLinks[rb][ra] = (crossLinks[rb][ra]||0) + 1;
-    });
-
-    const rootOrder = [];
-    const placed = new Set();
-    const remaining = new Map(islandEntries);
-    while(remaining.size){
-      let nextRoot = null, bestScore = -1;
-      if(placed.size === 0){
-        nextRoot = islandEntries[0][0];
-      } else {
-        remaining.forEach((memberIds, root)=>{
-          let score = 0;
-          const links = crossLinks[root];
-          if(links){ placed.forEach(pr=>{ if(links[pr]) score += links[pr]; }); }
-          if(score > bestScore){ bestScore = score; nextRoot = root; }
-        });
-        if(bestScore <= 0){
-          nextRoot = islandEntries.find(([r])=>remaining.has(r))[0];
-        }
+    // Kelompokkan menjadi "pulau" orang yang saling terhubung (satu keluarga besar = satu kelompok)
+    const adj = {}; ids.forEach(id=>adj[id]=[]);
+    edgePairs.forEach(([a,b])=>{ if(adj[a]) adj[a].push(b); if(adj[b]) adj[b].push(a); });
+    const visited = new Set();
+    const clusters = [];
+    ids.forEach(id=>{
+      if(visited.has(id)) return;
+      const comp = []; const stack=[id]; visited.add(id);
+      while(stack.length){
+        const cur = stack.pop(); comp.push(cur);
+        (adj[cur]||[]).forEach(n=>{ if(!visited.has(n)){ visited.add(n); stack.push(n); } });
       }
-      rootOrder.push(nextRoot);
-      placed.add(nextRoot);
-      remaining.delete(nextRoot);
-    }
-    const clusters = rootOrder.map(root=>islandsMap[root]);
+      clusters.push(comp);
+    });
+    clusters.sort((a,b)=> b.length - a.length);
 
-    // Pisahkan pulau yang sebagian/seluruh anggotanya sudah punya posisi tetap (hasil geser manual Anda)
-    // dari pulau yang sepenuhnya baru. Pulau yang sudah "berlabuh" (anchored) tidak akan digeser atau
-    // dipindah lagi walau Anda menambah orang baru di pulau lain — hanya anggota BARU di pulau itu
-    // sendiri yang ditata otomatis di sekitar posisi tetap yang sudah ada.
-    const pos = {};
-    const anchoredBoundsList = [];
-    const floatingClusterData = [];
-
-    clusters.forEach(comp=>{
+    // Tata letak tiap kelompok secara lokal (rapat, tanpa tabrakan), lalu susun berdekatan dalam grid antar-kelompok
+    const clusterData = clusters.map(comp=>{
       const compSet = new Set(comp);
       const localEdges = edgePairs.filter(([a,b])=>compSet.has(a)&&compSet.has(b));
-      const fixedPositions = {};
-      let hasFixed = false;
+      const lpos = layoutCluster(comp, localEdges, clanRootOf);
+      let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
       comp.forEach(id=>{
-        const np = people[id] && people[id].netPos;
-        if(np && typeof np.x === 'number' && typeof np.y === 'number'){
-          fixedPositions[id] = { x: np.x, y: np.y };
-          hasFixed = true;
-        }
+        const e = nodeExtent(id);
+        minX = Math.min(minX, lpos[id].x - e.hw);
+        maxX = Math.max(maxX, lpos[id].x + e.hw);
+        minY = Math.min(minY, lpos[id].y - e.hh);
+        maxY = Math.max(maxY, lpos[id].y + e.hh);
       });
-
-      if(hasFixed){
-        const lpos = layoutCluster(comp, localEdges, fixedPositions);
-        comp.forEach(id=>{ pos[id] = lpos[id]; });
-        let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
-        comp.forEach(id=>{
-          const e = nodeExtent(id);
-          minX = Math.min(minX, pos[id].x - e.hw); maxX = Math.max(maxX, pos[id].x + e.hw);
-          minY = Math.min(minY, pos[id].y - e.hh); maxY = Math.max(maxY, pos[id].y + e.hh);
-        });
-        anchoredBoundsList.push({ minX, minY, maxX, maxY });
-      } else {
-        const lpos = layoutCluster(comp, localEdges);
-        let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
-        comp.forEach(id=>{
-          const e = nodeExtent(id);
-          minX = Math.min(minX, lpos[id].x - e.hw); maxX = Math.max(maxX, lpos[id].x + e.hw);
-          minY = Math.min(minY, lpos[id].y - e.hh); maxY = Math.max(maxY, lpos[id].y + e.hh);
-        });
-        floatingClusterData.push({ comp, lpos, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 });
-      }
+      return { comp, lpos, minX, minY, w:(maxX-minX)||50, h:(maxY-minY)||50 };
     });
 
-    const PAD = 64; // jarak antar pulau keluarga besar yang berbeda — cukup lega untuk terlihat terpisah,
-                     // tapi tak dibuat berlebihan supaya garis penghubung lintas-keluarga tetap enak ditelusuri
+    const PAD = 44; // jarak antar kelompok keluarga besar yang berbeda, supaya jelas terpisah
     const totalNodes = ids.length;
     const MAX_ROW_WIDTH = Math.max(800, Math.sqrt(totalNodes) * 150);
 
-    // Pulau yang sepenuhnya baru ditata di grid, dimulai dari BAWAH area yang sudah dipakai pulau
-    // berlabuh — supaya penambahan orang/keluarga baru tak pernah menimpa susunan yang sudah Anda atur.
+    const pos = {};
     let cursorX = PAD, cursorY = PAD, rowHeight = 0;
-    if(anchoredBoundsList.length){
-      cursorY = Math.max(...anchoredBoundsList.map(b=>b.maxY)) + PAD;
-    }
-    floatingClusterData.forEach(c=>{
+    clusterData.forEach(c=>{
       if(cursorX > PAD && cursorX + c.w > MAX_ROW_WIDTH){
         cursorX = PAD;
         cursorY += rowHeight + PAD;
@@ -765,30 +664,17 @@
     });
 
     // Ukuran kanvas dihitung termasuk kotak label di tepi, supaya "Tampilkan Semua" tak pernah memotong nama.
-    let maxRight = 0, maxBottom = 0, minLeft = Infinity, minTop = Infinity;
+    let maxRight = 0, maxBottom = 0;
     ids.forEach(id=>{
       const e = nodeExtent(id), pp = pos[id];
       maxRight = Math.max(maxRight, pp.x + e.hw);
       maxBottom = Math.max(maxBottom, pp.y + e.hh);
-      minLeft = Math.min(minLeft, pp.x - e.hw);
-      minTop = Math.min(minTop, pp.y - e.hh);
     });
-    // Kalau ada posisi tetap (hasil geser manual) yang jatuh di kiri/atas titik nol, geser SEMUA
-    // titik secukupnya supaya tetap termuat di kanvas. Ini geseran tampilan semata (bukan diubah/disimpan
-    // ulang) — posisi relatif satu sama lain, yang sudah Anda atur, tidak berubah sama sekali.
-    const shiftX = minLeft < PAD ? (PAD - minLeft) : 0;
-    const shiftY = minTop < PAD ? (PAD - minTop) : 0;
-    if(shiftX || shiftY){
-      ids.forEach(id=>{ pos[id].x += shiftX; pos[id].y += shiftY; });
-      maxRight += shiftX; maxBottom += shiftY;
-    }
-
     const W = Math.max(700, maxRight + PAD);
     const H = Math.max(500, maxBottom + PAD);
 
     networkPositions = pos;
     networkSignature = sig;
-    networkIslandOf = islandOf;
     networkCanvasSize = { W, H };
     return pos;
   }
@@ -1460,7 +1346,7 @@
     return card;
   }
 
-  function buildZoomShell(svgHtml, viewState, heightPx, contentW, contentH, onScaleChange){
+  function buildZoomShell(svgHtml, viewState, heightPx, contentW, contentH){
     const shell = el('div', {style:'border:1px solid var(--line);border-radius:10px;background:#fffdf8;overflow:hidden;'});
     const controls = el('div', {style:'display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--line);align-items:center;flex-wrap:wrap;'});
     const zoomOutBtn = el('button', {class:'sk-btn secondary', style:'width:auto;padding:4px 13px;margin:0;font-size:16px;'}, ['−']);
@@ -1480,7 +1366,6 @@
     function applyTransform(){
       inner.style.transform = `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`;
       zoomLabel.textContent = Math.round(viewState.scale*100)+'%';
-      if(onScaleChange) onScaleChange();
     }
     applyTransform();
 
@@ -1695,7 +1580,7 @@
   function renderJaringan(){
     const wrap = el('div', {});
     wrap.appendChild(el('div', {class:'sk-section-title'}, ['🕸 Jaringan Keluarga']));
-    wrap.appendChild(el('div', {class:'sk-net-hint'}, ['Klik satu orang, lalu orang lain, untuk melihat alur hubungan antar keduanya disorot pada jaringan. Warna simpul dan garis menandakan asal keluarga besar (klan) masing-masing. Seret (drag) sebuah nama untuk mengatur ulang posisinya secara manual — posisi akan tersimpan otomatis. Tahan tombol Shift sambil menyeret untuk menggeser satu keluarga besar sekaligus.']));
+    wrap.appendChild(el('div', {class:'sk-net-hint'}, ['Klik satu orang, lalu orang lain, untuk melihat alur hubungan antar keduanya disorot pada jaringan. Warna simpul dan garis menandakan asal keluarga besar (klan) masing-masing. Seret (drag) sebuah nama untuk mengatur ulang posisinya secara manual — posisi akan tersimpan otomatis.']));
 
     const ids = Object.keys(people);
     if(ids.length === 0) return wrap;
@@ -1714,45 +1599,26 @@
     const clanRootOf = {};
     ids.forEach(id=>{ clanRootOf[id] = clanOf[id].rootId; });
 
-    // Migrasi sekali-jalan: versi lama menyimpan posisi geser sebagai OFFSET relatif ({dx,dy}) terhadap
-    // tata-letak otomatis — masalahnya, begitu ada nama baru ditambahkan, seluruh tata-letak otomatis
-    // dihitung ulang dari nol sehingga "dasar" offset itu ikut berubah dan posisi yang sudah diatur jadi
-    // melompat. Sekarang posisi geser disimpan sebagai koordinat TETAP ({x,y}) yang tidak pernah dihitung
-    // ulang. Baris berikut mengubah data lama ke format baru, sekali saja, berdasarkan tata-letak yang
-    // sedang Anda lihat sekarang, supaya susunan yang sudah Anda atur tidak hilang/berubah.
-    const legacyIds = ids.filter(id=>{
-      const np = people[id].netPos;
-      return np && typeof np.dx === 'number' && typeof np.x !== 'number';
-    });
-    if(legacyIds.length){
-      const preMigrationPos = computeNetworkLayout(ids, edges, clanRootOf);
-      legacyIds.forEach(id=>{
-        const base = preMigrationPos[id];
-        const np = people[id].netPos;
-        if(base) people[id].netPos = { x: base.x + np.dx, y: base.y + np.dy };
-        else delete people[id].netPos;
-      });
-      networkSignature = ''; // paksa hitung ulang di bawah, kali ini dengan posisi tetap yang baru dikenali
-      saveData();
-    }
-
-    const pos = computeNetworkLayout(ids, edges, clanRootOf);
-    const { W, H } = networkCanvasSize;
-
-    // "Bekukan" posisi semua orang begitu pertama kali ditampilkan — bukan cuma yang pernah digeser
-    // manual. Kalau tidak, setiap kali ada tambahan/perubahan data, simulasi tata-letak dihitung ulang
-    // dari nol untuk semua orang yang belum "dikunci", dan hasilnya bisa sedikit berbeda tiap kali walau
-    // orangnya sama persis — ini yang membuat jaringan terasa "berubah sendiri". Dengan membekukan semua
-    // posisi begitu tampil, penambahan orang baru berikutnya hanya menata orang yang benar-benar baru
-    // di sekitar kerabatnya, tanpa menyentuh siapa pun yang sudah pernah ditampilkan sebelumnya.
-    let anyNewlyFixed = false;
+    const autoPos = computeNetworkLayout(ids, edges, clanRootOf);
+    const pos = {};
     ids.forEach(id=>{
-      if(!people[id].netPos && pos[id]){
-        people[id].netPos = { x: pos[id].x, y: pos[id].y };
-        anyNewlyFixed = true;
-      }
+      const ap = autoPos[id];
+      if(!ap) return;
+      const np = people[id].netPos;
+      pos[id] = np ? { x: ap.x + np.dx, y: ap.y + np.dy } : { x: ap.x, y: ap.y };
     });
-    if(anyNewlyFixed) saveData();
+    const NODE_MARGIN = 90;
+    ids.forEach(id=>{
+      const pp = pos[id]; if(!pp) return;
+      if(pp.x < NODE_MARGIN) pp.x = NODE_MARGIN;
+      if(pp.y < NODE_MARGIN) pp.y = NODE_MARGIN;
+    });
+    let { W, H } = networkCanvasSize;
+    ids.forEach(id=>{
+      const pp = pos[id]; if(!pp) return;
+      W = Math.max(W, pp.x + NODE_MARGIN);
+      H = Math.max(H, pp.y + NODE_MARGIN);
+    });
 
     let highlightEdges = new Set();
     let relResult = null;
@@ -1801,7 +1667,7 @@
       if(!window.confirm('Ini akan mengembalikan SEMUA posisi nama yang pernah Anda geser manual ke susunan otomatis. Lanjutkan?')) return;
       let changed = false;
       ids.forEach(id=>{ if(people[id].netPos){ delete people[id].netPos; changed = true; } });
-      if(changed){ saveData(); networkSignature = ''; }
+      if(changed) saveData();
       render();
     });
     searchWrap.appendChild(resetLayoutBtn);
@@ -1817,22 +1683,14 @@
       return clanOf[a] ? clanOf[a].color : '#cbb98c';
     }
     let svgContent = '';
-    const SPOUSE_COLOR = '#B23A2F'; // merah bata tua — konsisten untuk semua garis pernikahan, terlepas dari klan
     edges.forEach(([a,b])=>{
       const key = [a,b].sort().join('|');
       const pa = pos[a], pb = pos[b];
       if(!pa || !pb) return;
       const isHi = highlightEdges.has(key);
       const isSpouse = people[a] && people[a].spouseIds.includes(b);
-      const sameIsland = networkIslandOf[a] && networkIslandOf[a] === networkIslandOf[b];
-      // Garis PERNIKAHAN selalu merah tua & putus-putus, di mana pun posisinya, supaya langsung dikenali.
-      // Garis ayah-anak di DALAM satu keluarga besar (pulau yang sama) diwarnai per klan supaya gampang
-      // ditelusuri arahnya. Garis ayah-anak LINTAS keluarga besar dibuat netral & tipis saja, supaya
-      // tidak mendominasi tampilan dengan garis panjang berwarna-warni.
-      const col = isHi ? '#BA7517' : (isSpouse ? SPOUSE_COLOR : (sameIsland ? edgeColor(a,b) : '#c9c2b0'));
-      const baseWidth = isHi ? 3 : (isSpouse ? 1.8 : (sameIsland ? 1.3 : 1));
-      const baseOpacity = isHi ? 1 : (isSpouse ? 0.8 : (sameIsland ? 0.6 : 0.4));
-      svgContent += `<line data-a="${a}" data-b="${b}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${col}" stroke-width="${baseWidth}" ${isSpouse&&!isHi?'stroke-dasharray="4,3"':''} opacity="${baseOpacity}"/>`;
+      const col = isHi ? '#BA7517' : edgeColor(a,b);
+      svgContent += `<line data-a="${a}" data-b="${b}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}" stroke="${col}" stroke-width="${isHi?3:(isSpouse?1.6:1.3)}" ${isSpouse&&!isHi?'stroke-dasharray="3,3"':''} opacity="${isHi?1:0.55}"/>`;
     });
     ids.forEach(id=>{
       const p = people[id];
@@ -1871,7 +1729,6 @@
 
     const svgHtml = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>`;
     const { shell, inner, fitToView, centerOn } = buildZoomShell(svgHtml, state.netView, 560, W, H);
-
     if(state.netCenterTarget && pos[state.netCenterTarget]){
       const target = pos[state.netCenterTarget];
       const targetId = state.netCenterTarget;
@@ -1882,99 +1739,41 @@
       requestAnimationFrame(fitToView);
     }
     inner.querySelectorAll('.sk-net-node').forEach(g=>{
+      const id = g.getAttribute('data-id');
       g.addEventListener('pointerdown', e=>{
         e.stopPropagation();
         e.preventDefault();
-        // Memakai fungsi RESMI bawaan SVG untuk mengubah posisi kursor di layar menjadi posisi yang
-        // tepat di dalam peta — ini metode standar browser sendiri (bukan rumus hitung-hitungan manual
-        // lagi), supaya nama yang diseret dijamin menempel persis di kursor, tidak peduli seberapa
-        // zoom/geser tampilan saat ini.
-        const svgEl = inner.querySelector('svg');
-        const svgPt = svgEl.createSVGPoint();
-        function svgPointFromEvent(ev){
-          svgPt.x = ev.clientX;
-          svgPt.y = ev.clientY;
-          const ctm = svgEl.getScreenCTM();
-          if(!ctm) return { x: 0, y: 0 };
-          const p = svgPt.matrixTransform(ctm.inverse());
-          return { x: p.x, y: p.y };
-        }
-        // Area klik tak-terlihat di sekitar tiap nama dibuat secukupnya lebih besar dari titik aslinya
-        // (supaya tetap gampang dipegang), tapi TIDAK dibuat sangat besar — supaya area klik dua nama
-        // yang berdekatan tidak saling tumpang tindih dan membingungkan nama mana yang benar-benar
-        // tertangkap. id di bawah ini SELALU nama yang benar-benar Anda klik (bukan hasil tebakan
-        // "yang terdekat"), supaya hasilnya selalu bisa dipastikan.
-        const id = g.getAttribute('data-id');
-        // Tahan tombol Shift sambil menyeret untuk menggeser SATU KELUARGA BESAR (klan) sekaligus,
-        // bukan cuma satu nama saja.
-        const groupIds = e.shiftKey
-          ? ids.filter(oid => networkIslandOf[oid] && networkIslandOf[oid] === networkIslandOf[id])
-          : [id];
-        const groupIdSet = new Set(groupIds);
-        const origins = {};
-        groupIds.forEach(gid=>{ if(pos[gid]) origins[gid] = { x: pos[gid].x, y: pos[gid].y }; });
-        // Selama menyeret, cukup pindahkan tampilan titik-titik ini saja secara langsung (murah & cepat,
-        // supaya mengikuti kursor tanpa jeda) — data aslinya baru ditulis & tata-letak dihitung ulang
-        // sekali saja begitu tombol dilepas, supaya hasil akhirnya selalu akurat tanpa harus menggambar
-        // ulang seluruh halaman di setiap gerakan mouse (yang bisa terasa berat/lag kalau orangnya banyak).
-        const primaryNode = inner.querySelector(`.sk-net-node[data-id="${id}"]`) || g;
-        const groupNodes = groupIds
-          .map(gid => inner.querySelector(`.sk-net-node[data-id="${gid}"]`))
-          .filter(Boolean);
-        const lines = Array.from(inner.querySelectorAll('line')).filter(line=>{
-          const a = line.getAttribute('data-a'), b = line.getAttribute('data-b');
-          return groupIdSet.has(a) || groupIdSet.has(b);
-        });
+        try{ g.setPointerCapture(e.pointerId); }catch(err){}
+        const startClientX = e.clientX, startClientY = e.clientY;
+        const scaleAtStart = state.netView.scale || 1;
+        const basePos = people[id].netPos ? { dx: people[id].netPos.dx, dy: people[id].netPos.dy } : { dx:0, dy:0 };
+        const origin = { x: pos[id].x, y: pos[id].y };
+        const lines = Array.from(inner.querySelectorAll(`line[data-a="${id}"], line[data-b="${id}"]`));
         let moved = false;
-        let finished = false; // pengaman: pastikan proses "simpan posisi akhir" ini hanya berjalan SATU KALI,
-                               // supaya tidak ada kejadian dobel-trigger yang bisa saling menimpa satu sama lain
-        document.body.style.cursor = 'grabbing';
-        try{ primaryNode.setPointerCapture(e.pointerId); }catch(err){}
+        g.style.cursor = 'grabbing';
 
-        // Dipasang langsung pada titik utamanya (dengan pointer capture) — begitu tombol ditekan,
-        // SEMUA gerakan mouse berikutnya dijamin oleh browser tetap "milik" titik ini, di mana pun
-        // kursor secara fisik berada, sampai tombol dilepas. Ditambah pemantau cadangan di window,
-        // supaya tetap tertangkap kalau untuk alasan tertentu pointer-capture tak bekerja mestinya.
         function onMove(ev){
-          const p = svgPointFromEvent(ev);
-          const dxScreen = ev.clientX - e.clientX, dyScreen = ev.clientY - e.clientY;
+          const dxScreen = ev.clientX - startClientX;
+          const dyScreen = ev.clientY - startClientY;
           if(!moved && (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3)) moved = true;
           if(!moved) return;
-          // Nama yang diklik ditempatkan TEPAT di titik p (posisi kursor saat ini di dalam peta) —
-          // bukan mempertahankan selisih dari titik persis Anda menekan tadi.
-          const dx = p.x - origins[id].x;
-          const dy = p.y - origins[id].y;
-          groupNodes.forEach(n=> n.setAttribute('transform', `translate(${dx},${dy})`));
+          const dx = dxScreen / scaleAtStart;
+          const dy = dyScreen / scaleAtStart;
+          g.setAttribute('transform', `translate(${dx},${dy})`);
           lines.forEach(line=>{
-            const a = line.getAttribute('data-a'), b = line.getAttribute('data-b');
-            if(groupIdSet.has(a) && origins[a]){ line.setAttribute('x1', origins[a].x + dx); line.setAttribute('y1', origins[a].y + dy); }
-            if(groupIdSet.has(b) && origins[b]){ line.setAttribute('x2', origins[b].x + dx); line.setAttribute('y2', origins[b].y + dy); }
+            if(line.getAttribute('data-a') === id){ line.setAttribute('x1', origin.x + dx); line.setAttribute('y1', origin.y + dy); }
+            if(line.getAttribute('data-b') === id){ line.setAttribute('x2', origin.x + dx); line.setAttribute('y2', origin.y + dy); }
           });
         }
-        function cleanup(){
-          primaryNode.removeEventListener('pointermove', onMove);
-          primaryNode.removeEventListener('pointerup', onUp);
-          primaryNode.removeEventListener('pointercancel', onUp);
-          window.removeEventListener('pointermove', onMove);
-          window.removeEventListener('pointerup', onUp);
-          window.removeEventListener('pointercancel', onUp);
-          document.body.style.cursor = '';
-        }
         function onUp(ev){
-          if(finished) return; // sudah pernah diproses sekali — abaikan kalau ada event susulan yang keliru
-          finished = true;
-          cleanup();
+          g.removeEventListener('pointermove', onMove);
+          g.removeEventListener('pointerup', onUp);
+          g.removeEventListener('pointercancel', onUp);
+          g.style.cursor = 'grab';
           if(moved){
-            const p = svgPointFromEvent(ev);
-            const dx = p.x - origins[id].x;
-            const dy = p.y - origins[id].y;
-            // Simpan sebagai koordinat TETAP (bukan offset relatif) — sekali diatur di sini, posisi
-            // orang ini (atau seisi keluarganya kalau Shift ditekan) terkunci dan tidak akan lagi ikut
-            // berubah walau nanti ada nama baru ditambahkan.
-            groupIds.forEach(gid=>{
-              if(origins[gid]) people[gid].netPos = { x: origins[gid].x + dx, y: origins[gid].y + dy };
-            });
-            networkSignature = ''; // paksa hitung ulang, jangan pakai cache lama
+            const dx = (ev.clientX - startClientX) / scaleAtStart;
+            const dy = (ev.clientY - startClientY) / scaleAtStart;
+            people[id].netPos = { dx: basePos.dx + dx, dy: basePos.dy + dy };
             saveData();
             render();
           } else {
@@ -1986,12 +1785,9 @@
             render();
           }
         }
-        primaryNode.addEventListener('pointermove', onMove);
-        primaryNode.addEventListener('pointerup', onUp);
-        primaryNode.addEventListener('pointercancel', onUp);
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
-        window.addEventListener('pointercancel', onUp);
+        g.addEventListener('pointermove', onMove);
+        g.addEventListener('pointerup', onUp);
+        g.addEventListener('pointercancel', onUp);
       });
     });
     wrap.appendChild(shell);
