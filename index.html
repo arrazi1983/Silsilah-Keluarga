@@ -1863,7 +1863,6 @@
       svgContent += `
         <g class="sk-net-node" data-id="${id}" style="cursor:grab;">
           <title>${escapeXml(displayName(p))}${p.job?(' · '+escapeXml(p.job)):''}</title>
-          <circle cx="${pp.x}" cy="${pp.y}" r="${Math.max(r*1.5, 24, 16/(state.netView.scale||1))}" fill="#000" fill-opacity="0.001" pointer-events="all"/>
           ${photoOrFill}
           <rect x="${pp.x - labelW/2 - 4}" y="${labelTopY-11}" width="${labelW+8}" height="${lines.length*lineH+6}" rx="4" fill="#fffdf8" opacity="${isSelected?0.95:0.72}"/>
           <text text-anchor="middle" font-size="${isSelected?11.5:10.5}" font-weight="${isSelected?700:600}" fill="#2c2117">${tspans}</text>
@@ -1871,38 +1870,16 @@
     });
 
     const svgHtml = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>`;
-
-    // Radius area-klik tak-terlihat di atas dihitung memakai state.netView.scale SAAT teks SVG ini
-    // dibuat — tapi skala itu bisa saja berubah sesaat kemudian (lewat fitToView/centerOn yang baru
-    // benar-benar jalan pada frame berikutnya, atau lewat tombol +/-/scroll zoom kapan pun), sehingga
-    // area klik yang sudah telanjur digambar jadi tidak sesuai lagi dengan skala yang benar-benar
-    // tampil. Fungsi ini memperbaikinya lagi setiap kali skala berubah, dari sumber mana pun.
-    let innerRef = null;
-    function refreshHitRadii(){
-      if(!innerRef) return;
-      innerRef.querySelectorAll('.sk-net-node').forEach(g=>{
-        const gid = g.getAttribute('data-id');
-        const pp = pos[gid]; if(!pp) return;
-        const hitCircle = g.querySelector('circle[fill-opacity="0.001"]');
-        if(!hitCircle) return;
-        const isSel = gid === state.netSelA || gid === state.netSelB;
-        const baseR = isSel ? 24 : 17;
-        hitCircle.setAttribute('r', Math.max(baseR*1.5, 24, 16/(state.netView.scale||1)));
-      });
-    }
-
-    const { shell, inner, fitToView, centerOn } = buildZoomShell(svgHtml, state.netView, 560, W, H, refreshHitRadii);
-    innerRef = inner;
-    refreshHitRadii();
+    const { shell, inner, fitToView, centerOn } = buildZoomShell(svgHtml, state.netView, 560, W, H);
 
     if(state.netCenterTarget && pos[state.netCenterTarget]){
       const target = pos[state.netCenterTarget];
       const targetId = state.netCenterTarget;
       state.netCenterTarget = null;
-      requestAnimationFrame(()=>{ centerOn(target.x, target.y, 1.4); refreshHitRadii(); });
+      requestAnimationFrame(()=> centerOn(target.x, target.y, 1.4));
     } else if(state.netView._fittedSig !== networkSignature){
       state.netView._fittedSig = networkSignature;
-      requestAnimationFrame(()=>{ fitToView(); refreshHitRadii(); });
+      requestAnimationFrame(fitToView);
     }
     inner.querySelectorAll('.sk-net-node').forEach(g=>{
       g.addEventListener('pointerdown', e=>{
@@ -1922,18 +1899,12 @@
           const p = svgPt.matrixTransform(ctm.inverse());
           return { x: p.x, y: p.y };
         }
-        // Area klik tak-terlihat di sekitar tiap nama sengaja dibuat cukup besar (supaya gampang
-        // dipegang saat zoom kecil), tapi ini bisa membuat area dua nama yang berdekatan saling
-        // tumpang tindih. Supaya yang benar-benar tertangkap SELALU nama yang paling dekat dengan
-        // kursor (bukan sekadar nama mana pun yang kebetulan "menang" duluan), cari ulang di sini.
-        const downPoint = svgPointFromEvent(e);
-        let id = g.getAttribute('data-id');
-        let bestDist = Infinity;
-        ids.forEach(oid=>{
-          const pp = pos[oid]; if(!pp) return;
-          const dist = (pp.x-downPoint.x)**2 + (pp.y-downPoint.y)**2;
-          if(dist < bestDist){ bestDist = dist; id = oid; }
-        });
+        // Area klik tak-terlihat di sekitar tiap nama dibuat secukupnya lebih besar dari titik aslinya
+        // (supaya tetap gampang dipegang), tapi TIDAK dibuat sangat besar — supaya area klik dua nama
+        // yang berdekatan tidak saling tumpang tindih dan membingungkan nama mana yang benar-benar
+        // tertangkap. id di bawah ini SELALU nama yang benar-benar Anda klik (bukan hasil tebakan
+        // "yang terdekat"), supaya hasilnya selalu bisa dipastikan.
+        const id = g.getAttribute('data-id');
         // Tahan tombol Shift sambil menyeret untuk menggeser SATU KELUARGA BESAR (klan) sekaligus,
         // bukan cuma satu nama saja.
         const groupIds = e.shiftKey
